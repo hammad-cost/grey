@@ -8,7 +8,7 @@
 | Current step | None — Release 0.2 is complete. Waiting for the student to walk through it in the browser. |
 | Last completed step | 8 — Docs + full verification (251 backend, 29 frontend tests, type-check, build OK; real-server stream + CORS checked) |
 | Next action | Manual browser walk-through (Start my FYP → industry → branch → Start research). Then choose Release 0.3 scope (e.g. evidence source list UI, problem extraction, persistent checkpointer). Do not start 0.3 without approval. |
-| Last commit | "Release 0.2: evidence research with streamed progress" on `main` (run `git log -1`). Not pushed. |
+| Last commit | "Release 0.2: evidence research with streamed progress" on `main` (`8cb7d3c`). Pushed to GitHub. |
 
 ## Release 0.2 plan
 

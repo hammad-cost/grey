@@ -3,10 +3,12 @@ Research events — turns research progress into typed GreyEvents for the fronte
 
 The student sees a short checklist while Grey researches:
 
-    ✓ Identifying relevant organizations
-    ✓ Reviewing authoritative sources
-    ● Checking research
-    ○ Checking datasets
+    ✓ Discovering startups
+    ✓ Confirming on startup websites
+    ● Reading industry news
+    ○ Reviewing government evidence
+    ○ Checking research papers
+    ○ Finding public datasets
     ○ Evaluating evidence quality
     ○ Saving evidence to your Project Brain
 
@@ -18,9 +20,9 @@ renders what it receives — it never needs to know the research plan.
 Only safe activity is sent: step labels and source counts. Never reasoning,
 prompts, queries, or raw error messages.
 """
-from app.core.brain.schemas import ResearchCategory, ResearchRun, WorkflowState
+from app.core.brain.schemas import ResearchRun, WorkflowState
 from app.core.events import AllowedAction, EventStatus, EventType, GreyEvent, build_event
-from app.domains.fyp.skills.research_evidence.queries import CATEGORY_LABELS, EVALUATING_LABEL
+from app.domains.fyp.skills.research_evidence.queries import DISCOVER_STARTUPS, EVALUATING_LABEL, STEP_LABELS
 from app.domains.fyp.skills.research_evidence.schemas import (
     ResearchPhase,
     ResearchProgress,
@@ -34,7 +36,7 @@ STARTING_LABEL = "Starting research"
 
 # (step id, label) in the order the student sees them.
 RESEARCH_STEPS: list[tuple[str, str]] = [
-    *((category.value, label) for category, label in CATEGORY_LABELS.items()),
+    *STEP_LABELS.items(),
     (EVALUATING_STEP, EVALUATING_LABEL),
     (STORING_STEP, STORING_LABEL),
 ]
@@ -123,8 +125,8 @@ class ResearchEventBuilder:
         if progress.phase == ResearchPhase.EVALUATING_EVIDENCE:
             steps = _steps(EVALUATING_STEP, current_done=False)
         else:
-            category = progress.category or ResearchCategory.ORGANIZATIONS
-            steps = _steps(category.value, current_done=progress.phase == ResearchPhase.SOURCES_FOUND)
+            step = progress.step or DISCOVER_STARTUPS
+            steps = _steps(step, current_done=progress.phase == ResearchPhase.SOURCES_FOUND)
 
         return self._event(_PHASE_EVENT[progress.phase], progress.label, steps)
 
@@ -139,6 +141,8 @@ class ResearchEventBuilder:
             "Research complete",
             _steps(STORING_STEP, current_done=True),
             status=EventStatus.COMPLETE,
+            # Release 0.3: the frontend starts problem extraction straight away.
+            allowed_actions=[AllowedAction.EXTRACT_PROBLEMS],
             brain_patch={
                 "research_status": "complete",
                 "evidence_count": run.sources_found,
@@ -149,6 +153,7 @@ class ResearchEventBuilder:
                 "high_quality_count": summary.high_quality_count,
                 "by_tier": {tier.value: count for tier, count in summary.by_tier.items()},
                 "by_category": {cat.value: count for cat, count in summary.by_category.items()},
+                "startups_confirmed": summary.startups_confirmed,
                 "provider": summary.provider,
             },
         )

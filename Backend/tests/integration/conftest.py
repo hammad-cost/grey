@@ -5,6 +5,7 @@ The `client` fixture runs real HTTP requests against the FastAPI app with:
   - an in-memory SQLite database (fresh per test)
   - a fresh LangGraph MemorySaver (fresh per test)
   - its own skill registry using the mock search provider with no delay
+    and a fake-mode LLM gateway (FakeLLMProvider — never a real model)
 
 This means:
   - No files are created on disk.
@@ -19,11 +20,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.api.projects import get_discovery_graph
 from app.core.brain.database import get_session, get_session_factory
 from app.core.brain.models import Base
+from app.core.config.settings import Settings
+from app.core.llm import build_llm_gateway
 from app.core.skills.registry import SkillRegistry
 from app.core.tools.providers.mock_search import MockSearchProvider
 from app.domains.fyp.skills import register_fyp_skills
 from app.domains.fyp.workflows.discovery import build_discovery_graph
-from app.domains.fyp.workflows.discovery import research_runner
+from app.domains.fyp.workflows.discovery import problem_runner, research_runner
 from main import app
 
 
@@ -46,7 +49,7 @@ async def client():
 
     # --- Fresh workflow graph with its own skills ---
     skills = SkillRegistry()
-    register_fyp_skills(skills, MockSearchProvider())
+    register_fyp_skills(skills, MockSearchProvider(), build_llm_gateway(Settings(_env_file=None, llm_mode="fake")))
     test_graph = build_discovery_graph(MemorySaver(), skills=skills)
 
     # --- Apply overrides ---
@@ -54,6 +57,7 @@ async def client():
     app.dependency_overrides[get_session_factory] = lambda: factory
     app.dependency_overrides[get_discovery_graph] = lambda: test_graph
     research_runner._active_research.clear()
+    problem_runner._active_extractions.clear()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -64,4 +68,5 @@ async def client():
     # --- Teardown ---
     app.dependency_overrides.clear()
     research_runner._active_research.clear()
+    problem_runner._active_extractions.clear()
     await engine.dispose()

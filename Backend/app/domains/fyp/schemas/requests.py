@@ -5,7 +5,7 @@ These define the shape of what the frontend sends to the backend.
 FastAPI validates incoming JSON against these automatically — if the
 request body is wrong, FastAPI returns a 422 error before the route runs.
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SelectIndustryRequest(BaseModel):
@@ -16,3 +16,8 @@ class SelectIndustryRequest(BaseModel):
 class SelectBranchRequest(BaseModel):
     """Body for POST /projects/{workspace_id}/branch."""
     branch: str
+
+
+class SelectProblemRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/problem — the id of one of the problem options."""
+    problem_id: str = Field(min_length=1)

@@ -33,6 +33,11 @@ export type WorkspaceBrainSummary = {
   researchStatus?: string;
   evidenceCount?: number;
   highQualityEvidenceCount?: number;
+  /** Problem opportunities (Release 0.3): "running" | "options_ready" | "failed". */
+  problemStatus?: string;
+  problemOptionCount?: number;
+  selectedProblemId?: string;
+  selectedProblemTitle?: string;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -59,6 +64,8 @@ export type GreyUIState = {
   brainSummary?: WorkspaceBrainSummary;
   /** The `data` of the latest backend event, e.g. { available_industries: [...] }. */
   eventData?: Record<string, unknown>;
+  /** The `type` of the latest backend event, so a component knows whose eventData it is. */
+  lastEventType?: string;
 };
 
 /** The state Grey starts in before any project has been created. */
@@ -96,6 +103,7 @@ export const Actions = {
   SELECT_INDUSTRY: "selectIndustry",
   SELECT_BRANCH: "selectBranch",
   START_RESEARCH: "startResearch",
+  EXTRACT_PROBLEMS: "extractProblems",
   SELECT_PROBLEM: "selectProblem",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",

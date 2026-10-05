@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config.settings import Settings
+from app.core.tools import parse_search_providers, search_provider_label
 from app.core.tools import (
     SUPPORTED_SEARCH_PROVIDERS,
     SearchFocus,
@@ -157,28 +158,50 @@ async def test_mock_delay_is_applied():
 
 def test_settings_default_to_mock_provider():
     settings = Settings(_env_file=None)
-    assert settings.search_provider == "mock"
+    assert settings.search_providers == "mock"
     assert settings.mock_search_delay_ms == 400
 
 
 def test_factory_builds_mock_provider_from_settings():
-    provider = get_search_provider(Settings(search_provider="mock", mock_search_delay_ms=0))
+    provider = get_search_provider(Settings(_env_file=None, search_providers="mock", mock_search_delay_ms=0))
     assert isinstance(provider, MockSearchProvider)
     assert "mock" in SUPPORTED_SEARCH_PROVIDERS
 
 
 def test_factory_ignores_case_and_spaces():
-    provider = get_search_provider(Settings(search_provider="  Mock "))
+    provider = get_search_provider(Settings(_env_file=None, search_providers="  Mock "))
     assert provider.name == "mock"
 
 
 def test_factory_rejects_unknown_provider():
-    with pytest.raises(ValueError, match="Unknown SEARCH_PROVIDER 'tavily'"):
-        get_search_provider(Settings(search_provider="tavily"))
+    with pytest.raises(ValueError, match="Unknown search provider 'bing'"):
+        get_search_provider(Settings(_env_file=None, search_providers="bing"))
 
 
-def test_search_provider_can_be_set_from_environment(monkeypatch):
-    monkeypatch.setenv("SEARCH_PROVIDER", "mock")
+def test_factory_rejects_an_empty_list():
+    with pytest.raises(ValueError, match="empty"):
+        get_search_provider(Settings(_env_file=None, search_providers=" , "))
+
+
+def test_mock_cannot_be_mixed_with_real_providers(monkeypatch):
+    """Fake results must never appear in live research."""
+    monkeypatch.setattr("app.core.tools.factory.SUPPORTED_SEARCH_PROVIDERS", ["mock", "serpapi"])
+    with pytest.raises(ValueError, match="can't be combined"):
+        parse_search_providers(Settings(_env_file=None, search_providers="serpapi,mock"))
+
+
+def test_a_provider_cannot_be_listed_twice():
+    with pytest.raises(ValueError, match="twice"):
+        parse_search_providers(Settings(_env_file=None, search_providers="mock,mock"))
+
+
+def test_provider_label_for_the_research_run():
+    assert search_provider_label(Settings(_env_file=None, search_providers=" MOCK ")) == "mock"
+
+
+def test_search_providers_can_be_set_from_environment(monkeypatch):
+    monkeypatch.setenv("SEARCH_PROVIDERS", "mock")
     monkeypatch.setenv("MOCK_SEARCH_DELAY_MS", "0")
     settings = Settings()
+    assert settings.search_providers == "mock"
     assert settings.mock_search_delay_ms == 0

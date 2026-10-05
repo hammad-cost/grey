@@ -8,12 +8,21 @@
  *   INDUSTRY_SELECTION → IndustrySelector cards
  *   BRANCH_SELECTION   → BranchSelector cards
  *   EVIDENCE_RESEARCH  → ResearchProgressCard (start, live progress, summary)
+ *                        + ProblemProgressCard (finding problems, right after research)
+ *   PROBLEM_OPTIONS    → ProblemOptions (3–5 ProblemOpportunityCards, confirm step)
+ *   PROBLEM_SELECTED   → SelectedProblemCard
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
 import { IndustrySelector } from "@/domains/fyp/components/IndustrySelector";
+import { ProblemOptions } from "@/domains/fyp/components/ProblemOptions";
+import { ProblemProgressCard } from "@/domains/fyp/components/ProblemProgressCard";
 import { ResearchProgressCard } from "@/domains/fyp/components/ResearchProgressCard";
+import { SelectedProblemCard } from "@/domains/fyp/components/SelectedProblemCard";
+
+// Stages whose cards show their own progress, so the generic spinner is hidden.
+const STAGES_WITH_OWN_PROGRESS = ["EVIDENCE_RESEARCH", "PROBLEM_OPTIONS"];
 
 export default function Home() {
   const state = useGreyUIState();
@@ -47,8 +56,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Loading spinner (research shows its own progress instead) ───── */}
-        {isLoading && state.currentStage !== "EVIDENCE_RESEARCH" && (
+        {/* ── Loading spinner (some stages show their own progress instead) ── */}
+        {isLoading && !STAGES_WITH_OWN_PROGRESS.includes(state.currentStage) && (
           <div className="flex items-center gap-2 text-sm text-gray-400 mt-4">
             <span className="animate-spin">⟳</span>
             <span>Grey is thinking…</span>
@@ -72,8 +81,17 @@ export default function Home() {
           <BranchSelector />
         )}
 
-        {/* ── EVIDENCE_RESEARCH ──────────────────────────────────────────── */}
-        <ResearchProgressCard />
+        {/* ── EVIDENCE_RESEARCH: research, then finding problems ─────────── */}
+        <div className="flex flex-col gap-4">
+          <ResearchProgressCard />
+          <ProblemProgressCard />
+        </div>
+
+        {/* ── PROBLEM_OPTIONS — the student's mandatory choice ────────────── */}
+        <ProblemOptions />
+
+        {/* ── PROBLEM_SELECTED — discovery complete (Release 0.3) ─────────── */}
+        <SelectedProblemCard />
 
       </div>
 

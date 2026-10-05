@@ -39,8 +39,9 @@ class ResearchProgress(BaseModel):
     is reasoning. Labels come from a fixed list in queries.py.
     """
     phase: ResearchPhase
+    step: str | None = None                    # research step id, e.g. "discover_startups"; None while evaluating
     category: ResearchCategory | None = None   # None while evaluating all evidence
-    label: str                                 # e.g. "Identifying relevant organizations"
+    label: str                                 # e.g. "Discovering startups"
     sources_found: int = 0                     # total kept so far
     high_quality_sources: int = 0              # Tier A kept so far
 
@@ -52,6 +53,7 @@ class ResearchSummary(BaseModel):
     by_tier: dict[EvidenceTier, int]
     by_category: dict[ResearchCategory, int]
     provider: str
+    startups_confirmed: int = 0                # startups confirmed on their own website (second hop)
 
 
 class ResearchEvidenceOutput(BaseModel):

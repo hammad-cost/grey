@@ -1,3 +1,4 @@
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,10 +34,50 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
 
     # ── Search tool ───────────────────────────────────────────────────────────
-    # Which search provider evidence research uses. Release 0.2 supports "mock" only.
-    search_provider: str = "mock"
+    # Which search providers evidence research uses, in fallback order.
+    #   "mock"           → sample results, no key, no cost (default; used by tests)
+    #   "serpapi,tavily" → real web search: SerpAPI first, Tavily if it can't answer
+    # "mock" can't be mixed with real providers, so fake results never appear in live research.
+    search_providers: str = "mock"
     # Pause (milliseconds) per mock search, so research progress is visible in the UI.
     mock_search_delay_ms: int = 400
+
+    # Real search provider keys. A provider without a key is skipped. Never commit real keys.
+    serpapi_api_key: SecretStr = SecretStr("")
+    tavily_api_key: SecretStr = SecretStr("")
+
+    # Most searches one research run may make (free search plans are small).
+    research_max_searches: int = 15
+
+    # Limits for every real search (see app/core/tools/search_gateway.py).
+    search_timeout_seconds: float = 20.0
+    search_max_retries: int = 2
+    search_cooldown_seconds: float = 60.0           # skip a provider this long after rate limits / errors
+    search_quota_cooldown_seconds: float = 3600.0   # skip a provider this long after its credits run out
+
+    # ── LLM (Release 0.3) ─────────────────────────────────────────────────────
+    # fake = every model call is answered by FakeLLMProvider (no key, no cost).
+    # live = use the real providers in the profile routes below.
+    llm_mode: str = "fake"
+
+    # Provider keys. A provider without a key is skipped. Never commit real keys.
+    groq_api_key: SecretStr = SecretStr("")
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+
+    # Optional per-profile overrides: ordered "provider:model" routes, comma-separated.
+    # Empty = use the defaults in app/core/llm/profiles.py.
+    llm_profile_fast_cheap: str = ""
+    llm_profile_structured_reasoning: str = ""
+    llm_profile_high_quality_reasoning: str = ""
+    llm_profile_writing: str = ""
+    llm_profile_long_context: str = ""
+
+    # Limits for every model call (see app/core/llm/gateway.py).
+    llm_timeout_seconds: float = 60.0           # one attempt
+    llm_total_deadline_seconds: float = 150.0   # all retries and fallbacks together
+    llm_max_retries: int = 2                    # extra tries per model for short-lived failures
+    llm_cooldown_seconds: float = 60.0          # skip a model this long after rate limits / errors
+    llm_quota_cooldown_seconds: float = 3600.0  # skip a model this long after a daily/quota limit
 
     @property
     def cors_origin_list(self) -> list[str]:

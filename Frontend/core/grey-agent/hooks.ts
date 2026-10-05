@@ -15,6 +15,7 @@ import { useCallback } from "react";
 import { useGreyContext } from "./context";
 import { readEventStream } from "./stream";
 import type { GreyEvent, GreyUIState } from "./types";
+import { Actions } from "./types";
 
 // ── API helper ─────────────────────────────────────────────────────────────────
 
@@ -45,8 +46,30 @@ async function errorFromResponse(response: Response): Promise<Error> {
   );
 }
 
-/** Research ends with exactly one of these events. */
+/** Each streamed step ends with exactly one of these events. */
 const RESEARCH_END_EVENTS = ["research_completed", "research_failed"];
+const PROBLEM_END_EVENTS = ["problem_options_ready", "problem_extraction_failed"];
+
+/**
+ * POST to a streaming endpoint and apply every event as it arrives.
+ * Returns the final event; throws if the request fails or the stream stops early.
+ */
+async function runEventStream(
+  path: string,
+  endEvents: string[],
+  applyEvent: (event: GreyEvent) => void,
+  what: string
+): Promise<GreyEvent> {
+  const response = await fetch(`${BACKEND_URL}${path}`, { method: "POST" });
+  if (!response.ok) throw await errorFromResponse(response);
+  if (!response.body) throw new Error(`${what} did not start. Please try again.`);
+
+  const lastEvent = await readEventStream(response.body, applyEvent);
+  if (!lastEvent || !endEvents.includes(lastEvent.type)) {
+    throw new Error(`The connection to Grey was lost during ${what.toLowerCase()}. Please try again.`);
+  }
+  return lastEvent;
+}
 
 // ── Public hooks ───────────────────────────────────────────────────────────────
 
@@ -144,31 +167,62 @@ export function useGreyActions() {
   );
 
   /**
-   * Run evidence research for the chosen industry and branch.
+   * Run evidence research for the chosen industry and branch, then — when the
+   * backend says so (research_completed allows "extractProblems") — find the
+   * problem options straight away, so the student doesn't have to click again.
    *
-   * The backend streams progress events while it researches; each one is
-   * applied as soon as it arrives, so the progress card updates live.
-   * Resolves with the final event (research_completed or research_failed).
+   * The backend streams progress events; each one is applied as soon as it
+   * arrives, so the cards update live. Resolves with the final event
+   * (problem_options_ready, or research_failed / problem_extraction_failed).
    */
   const startResearch = useCallback(
     () =>
       run(async () => {
-        if (!state.workspaceId) throw new Error("No active project.");
-        const response = await fetch(
-          `${BACKEND_URL}/projects/${state.workspaceId}/research`,
-          { method: "POST" }
-        );
-        if (!response.ok) throw await errorFromResponse(response);
-        if (!response.body) throw new Error("Research did not start. Please try again.");
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
 
-        const lastEvent = await readEventStream(response.body, applyEvent);
-        if (!lastEvent || !RESEARCH_END_EVENTS.includes(lastEvent.type)) {
-          throw new Error("The connection to Grey was lost during research. Please try again.");
-        }
-        return lastEvent;
+        const researched = await runEventStream(
+          `/projects/${workspaceId}/research`, RESEARCH_END_EVENTS, applyEvent, "Research"
+        );
+        if (!researched.allowed_actions.includes(Actions.EXTRACT_PROBLEMS)) return researched;
+
+        return runEventStream(
+          `/projects/${workspaceId}/problems`, PROBLEM_END_EVENTS, applyEvent, "Finding problems"
+        );
       }),
     [run, applyEvent, state.workspaceId]
   );
 
-  return { startProject, selectIndustry, selectBranch, startResearch };
+  /**
+   * Find problem options from the evidence already saved (e.g. "Try again"
+   * after problem_extraction_failed). Streams progress like startResearch.
+   * Resolves with problem_options_ready or problem_extraction_failed.
+   */
+  const extractProblems = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/problems`, PROBLEM_END_EVENTS, applyEvent, "Finding problems"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Save the student's chosen problem (a mandatory decision). */
+  const selectProblem = useCallback(
+    (problemId: string) =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${state.workspaceId}/problem`,
+          { method: "POST", body: JSON.stringify({ problem_id: problemId }) }
+        );
+        applyEvent(event);
+        return event;
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  return { startProject, selectIndustry, selectBranch, startResearch, extractProblems, selectProblem };
 }

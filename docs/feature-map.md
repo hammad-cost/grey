@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-05 (Release 0.2)
+**Last updated:** 2026-10-06 (Release 0.4)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -18,12 +18,15 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F3 | Branch Selection | ✅ | 0.1 |
 | F4 | Project Brain persistence | ✅ (see limitations) | 0.1 |
 | F5 | Workflow transition to `EVIDENCE_RESEARCH` | ✅ | 0.1 |
-| F6 | Evidence Research (streamed progress) | ✅ (mock search provider) | 0.2 |
-| F7 | Evidence read API | ✅ (no UI list yet) | 0.2 |
+| F6 | Evidence Research (streamed progress) | ✅ 0.2; real search + six-step plan in 0.4 (live run pending) | 0.2 / 0.4 |
+| F7 | Evidence read API | ✅ (no full-list UI; problem cards show their sources) | 0.2 |
+| F8 | Problem Opportunities (find, show, choose) | ✅ (fake LLM by default; Groq when configured) | 0.3 |
+| F9 | LLM gateway (profiles, fallback, providers) | ✅ (Fake + Groq) | 0.3 |
+| F10 | Search gateway (SerpAPI → Tavily fallback) | ✅ (live run pending) | 0.4 |
 
 ---
 
-## Request flow (shared by F1–F3; F6 streams — see F6)
+## Request flow (shared by F1–F3; F6 and F8 stream — see F6, F8)
 
 ```
 Student clicks a button / card
@@ -142,7 +145,7 @@ The student clicks **Start research**. Grey searches four categories, classifies
 | Tool | `SearchProvider` interface + `MockSearchProvider` (`.example` URLs) — `Backend/app/core/tools/`. Chosen by `SEARCH_PROVIDER` (only `mock`); `MOCK_SEARCH_DELAY_MS` makes progress visible. |
 | Startup | `register_skills()` in `Backend/main.py` registers FYP skills with the configured search provider |
 | Project Brain | `research_run` row (running → complete/failed, counts, provider, error); `evidence_source` rows replaced on each successful run; failed runs keep earlier evidence |
-| Events sent | `research_started` → (`searching_sources`, `sources_found`) ×4 → `evaluating_evidence` → `storing_evidence` → `research_completed` (status `complete`, `data.summary`, `brain_patch {research_status, evidence_count, high_quality_evidence_count}`) — or `research_failed` (status `blocked`, safe `data.message`, allowed `startResearch`). Only step labels and counts are sent — never queries or raw errors. |
+| Events sent | `research_started` → (`searching_sources`, `sources_found`) ×4 → `evaluating_evidence` → `storing_evidence` → `research_completed` (status `complete`, allowed `extractProblems` (0.3), `data.summary`, `brain_patch {research_status, evidence_count, high_quality_evidence_count}`) — or `research_failed` (status `blocked`, safe `data.message`, allowed `startResearch`). Only step labels and counts are sent — never queries or raw errors. |
 | Tests | Backend: `test_search_tool.py`, `test_evidence_classification.py`, `test_research_evidence_skill.py`, `test_research_workflow.py`, `test_brain_evidence.py`, `tests/integration/test_research_api.py`. Frontend: `stream.test.ts` (4), adapter `startResearch` tests (3), `ResearchProgressCard.test.tsx` (7) |
 
 ---
@@ -156,3 +159,53 @@ The student clicks **Start research**. Grey searches four categories, classifies
 | Fields | title, organization, source_type, published_date, url, problem_addressed, relevant_insight, why_it_matters, evidence_tier, research_category, query, provider |
 | UI | None yet — the card shows counts only. A source list is a candidate for the next release. |
 | Tests | `tests/integration/test_research_api.py` (evidence tests) |
+
+---
+
+## F8 — Problem Opportunities (Release 0.3)
+
+Right after research, Grey turns the stored evidence into 3–5 real, evidence-backed problems; the student must choose one (blueprint §12–15).
+
+| Layer | Detail |
+|---|---|
+| UI | `ProblemProgressCard` (checklist; failure → Try again / Research again), `ProblemOptions` + `ProblemOpportunityCard` ×3–5 (task type, Tier badges, real-world problem, why it matters, FYP direction, **View sources** with link/organization/date/tier/supporting point, "Sample data" badge, confirm dialog), `SelectedProblemCard` — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.problems` (problem_options_ready), `eventData.problem` (problem_selected); parsed by `Frontend/domains/fyp/problems.ts` |
+| Adapter actions | `startResearch()` continues into `/problems` automatically when research allows `extractProblems`; `extractProblems()` (retry); `selectProblem(id)` — `Frontend/core/grey-agent/hooks.ts` |
+| API | `POST /projects/{id}/problems` → **200** NDJSON stream; **404** unknown; **409** research not complete / options exist / already running. `POST /projects/{id}/problem {problem_id}` → **200** `problem_selected`; **404**; **409** not choosing / not an option; **422** missing id. `GET /projects/{id}/problems` → `ProblemListResponse` — `Backend/app/api/problems.py` |
+| Runner | `start_problem_extraction()` + `ProblemSession.events()`, `choose_problem()` — `Backend/app/domains/fyp/workflows/discovery/problem_runner.py`. Saves options with the workflow's ids; rebuilds the extraction position and the selection pause from the Brain after a restart. |
+| Workflow | `problem_extraction` node (skill via registry; read-only evidence reader from the run config) → `problem_selection` node (`interrupt`, validates the id) — `nodes.py`, `graph.py` |
+| Skill | `ProblemExtractionSkill` — `Backend/app/domains/fyp/skills/problem_extraction/`: `context.py` (≤20 strongest sources, refs `E1…`, no URLs/ids, ~2,500-token budget), `validation.py` (unknown ref, ungrounded, only Tier C, names an organization, URL, too long, duplicate), `skill.py` (one retry with feedback; `TooFewProblemsError` if <3; `NotEnoughEvidenceError` → LLM not called), `fake.py` (fake-mode answers). Prompt: `app/domains/fyp/prompts/problem_extraction.py` (`problem_extraction.v1`). |
+| Project Brain | `problem_run` (status, research run used, provider, model, prompt version, drafts generated/kept, rejection counts, error), `problem_candidate` (options, rank, status `candidate`/`selected`), `problem_evidence` (problem ↔ evidence + supporting point). Stage → `PROBLEM_OPTIONS` then `PROBLEM_SELECTED`, in the same commit as the data. |
+| Events | `problem_extraction_started` → `problem_extraction_progress` ×4 → `problem_options_ready` (stage `PROBLEM_OPTIONS`, `awaiting_user`, allowed `selectProblem`, `data.problems`, `data.summary`) — or `problem_extraction_failed` (`blocked`, safe message, allowed `extractProblems` or `startResearch`). Then `problem_selected` (stage `PROBLEM_SELECTED`, `complete`, no actions). |
+| Tests | Backend: `test_brain_problems.py`, `test_problem_extraction_skill.py`, `test_problem_workflow.py`, `tests/integration/test_problems_api.py`. Frontend: adapter tests (6 new), `ProblemOpportunityCard.test.tsx`, `ProblemOptions.test.tsx`, `ProblemProgressCard.test.tsx` |
+
+---
+
+## F9 — LLM gateway (Release 0.3)
+
+| Layer | Detail |
+|---|---|
+| Skill-facing API | `LLMGateway.generate_structured(LLMRequest(skill, profile, instructions, input, output_schema, max_output_tokens))` → `LLMResult(output, provider, model, usage, attempts)` — `Backend/app/core/llm/` |
+| Profiles | `fast_cheap`, `structured_reasoning`, `high_quality_reasoning`, `writing`, `long_context` — defaults in `profiles.py`; override per profile with `LLM_PROFILE_<NAME>=provider:model,…` |
+| Routing / fallback | `router.py` (skip providers without a key, unavailable or cooling down, or too small); `gateway.py` (retry with backoff / retry-after, total deadline, one repair, fallback rules); `health.py` (per-provider unavailable, per-model cooldown) |
+| Errors | `errors.py`: rate limited, timeout, server error, quota exhausted, auth error, context too long, invalid output, refusal (never falls back), bad request, unavailable |
+| Providers | `FakeLLMProvider` (scripts + responders; default), `OpenAICompatibleProvider` (httpx; configured as `groq`) — `providers/` |
+| Configuration | `LLM_MODE=fake|live`, `GROQ_API_KEY`, `GROQ_BASE_URL`, `LLM_TIMEOUT_SECONDS`, `LLM_TOTAL_DEADLINE_SECONDS`, `LLM_MAX_RETRIES`, `LLM_COOLDOWN_SECONDS`, `LLM_QUOTA_COOLDOWN_SECONDS` — `config.py`, `settings.py`, `.env.example` |
+| Logging | One `grey.llm` log line per attempt: skill, profile, provider, model, outcome, tokens, latency. Never prompts, input or keys. |
+| Tests | `test_llm_gateway.py`, `test_llm_providers.py` (fake HTTP transport), `test_llm_config.py`; live: `tests/live/test_groq_live.py` (skipped unless `RUN_LIVE_LLM_TESTS=1`) |
+
+---
+
+## F10 — Real evidence: search gateway and research plan v2 (Release 0.4)
+
+| Layer | Detail |
+|---|---|
+| Research plan | Six steps — `discover_startups` (startup directories, Tier C) → `confirm_startups` (second hop: own website, Tier A) → `industry_news` → `government` (2 searches) → `research_papers` (Scholar) → `datasets` — `Backend/app/domains/fyp/skills/research_evidence/queries.py`, `skill.py` |
+| Second hop | Names from directory titles ("Harbor AI \| Y Combinator" → "Harbor AI"); `"<name>" <branch>`; own site = name in the web address and not a listed directory/news/research/government/social site — `startups.py` |
+| Site lists | Startup directories, trusted news, peer-reviewed publishers, preprints, government endings, international bodies, data portals, community datasets, social/blogs — **edit `sources.py`** |
+| Classification | List checks first, then word clues from site name/publisher only; organization from Scholar venue / publisher / host; snippet cleaning — `classification.py` |
+| Search gateway | `SearchGateway`: order from `SEARCH_PROVIDERS`; retries (backoff, retry-after); fallback on rate limit / timeout / server error (after retries), out of credits, bad key, bad request, no results; rest periods; `SearchUnavailable` when all fail; logs without query text — `Backend/app/core/tools/search_gateway.py` |
+| Adapters | `SerpApiProvider` (google / tbm=nws / google_scholar, `site:` filters, tbs / as_ylo) and `TavilySearchProvider` (topic, include_domains, time_range) — `Backend/app/core/tools/providers/` |
+| Settings | `SEARCH_PROVIDERS` (`mock` default; `serpapi,tavily`; mock can't be mixed with real), `SERPAPI_API_KEY`, `TAVILY_API_KEY`, `RESEARCH_MAX_SEARCHES` (15), `SEARCH_TIMEOUT_SECONDS`, `SEARCH_MAX_RETRIES`, `SEARCH_COOLDOWN_SECONDS`, `SEARCH_QUOTA_COOLDOWN_SECONDS`; startup warning if a listed provider has no key |
+| Events / UI | Checklist ids = step ids; `research_completed.data.summary` adds `startups_confirmed` and `by_category.news`; research card shows found-by-type; View sources shows source-type labels — `research_events.py`, `ResearchProgressCard.tsx`, `ProblemOpportunityCard.tsx`, `problems.ts` |
+| Tests | `test_search_gateway.py`, `test_search_providers.py`, `test_startup_discovery.py`, `test_evidence_classification.py` (real sites), `test_research_evidence_skill.py` (second hop, budget); frontend `problems.test.ts`, card tests. Live tests: pending (Step 7). |

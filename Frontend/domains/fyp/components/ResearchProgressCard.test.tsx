@@ -150,4 +150,28 @@ describe("ResearchProgressCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(mocks.startResearch).toHaveBeenCalledTimes(1);
   });
+
+  it("describes the six research steps before starting", () => {
+    render(<ResearchProgressCard />);
+    expect(screen.getByText(/discover startups working in this branch and confirm them on their own websites/)).toBeTruthy();
+  });
+
+  it("shows what was found, by type, when research is complete", () => {
+    mocks.state = researchState({
+      status: "complete",
+      allowedActions: [],
+      eventData: {
+        steps: STEPS.map((s) => ({ ...s, state: "done" })),
+        summary: {
+          total_sources: 12, high_quality_count: 7, by_tier: { A: 7, B: 3, C: 2 },
+          startups_confirmed: 3,
+          by_category: { organizations: 5, news: 1, official_sources: 3, research: 2, datasets: 0 },
+        },
+      },
+    });
+    render(<ResearchProgressCard />);
+
+    // Only kinds that were found are listed; "1" is singular.
+    expect(screen.getByText("3 startups confirmed · 1 news article · 3 government sources · 2 research papers")).toBeTruthy();
+  });
 });

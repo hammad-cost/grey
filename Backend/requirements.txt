@@ -5,6 +5,9 @@ pydantic-settings==2.7.0
 # workflow
 langgraph==1.2.12
 
+# HTTP client (LLM provider calls; also used by tests)
+httpx==0.28.1
+
 # database
 sqlalchemy[asyncio]==2.0.36
 aiosqlite==0.20.0
@@ -12,4 +15,3 @@ aiosqlite==0.20.0
 # testing
 pytest==9.1.1
 pytest-asyncio==1.4.0
-httpx==0.28.1

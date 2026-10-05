@@ -1,28 +1,38 @@
 """
 Turning a raw search result into Project Brain evidence — with simple rules, no AI.
 
-1. classify()        → source type + evidence tier (product blueprint §11)
-2. split_snippet()   → problem addressed + relevant insight
-3. why_it_matters()  → a plain sentence explaining the source's value
+1. classify()          → source type + evidence tier (product blueprint §11)
+2. organization_name() → who is behind the source
+3. split_snippet()     → problem addressed + relevant insight
+4. why_it_matters()    → a plain sentence explaining the source's value
 
-Tier rules (first matching rule wins):
+How a source is classified (first matching rule wins):
 
-  Tier A — primary evidence
-    government sites (.gov, .mil)        initiative / report / programme / challenge / dataset
-    peer-reviewed research               journals, doi.org
-    official company / startup websites  (organization search results)
-  Tier B — strong secondary evidence
-    university sites (.edu, .ac.)        university research
-    preprints (arxiv, "preprint")        not yet peer-reviewed, so not Tier A
-    reputable news / publications        news sites, known outlets
-    community dataset platforms          kaggle, hugging face, dataset hubs
-    open-source projects                 github, gitlab
-  Tier C — discovery evidence
-    directories, aggregators, accelerators, blogs, forums, anything unrecognised
+  Part 1 — exact site lists (sources.py, editable). High confidence.
+    official data portals                         dataset           A
+    government / international bodies             initiative, report, programme, challenge, dataset  A
+    listed news outlets                           news              B
+    preprint servers (arXiv, SSRN, …)             research paper    B
+    peer-reviewed publishers (IEEE, Springer, …)  research paper    A
+    startup directories (YC, Product Hunt, …)     startup           C
+    blogs, forums, social media                   other             C
+    community datasets (Kaggle, Hugging Face)     dataset           B
+    open-source hosts (GitHub, GitLab)            open source       B
 
-Limitation: rules can't truly judge reputation. With the mock provider the
-signals are reliable; a real provider will need these rules reviewed.
+  Part 2 — word clues for sites not on any list (also how the mock's sample
+  sites are recognised). Only the site name and publisher are used — never
+  the headline, so "Wall Street Journal" can't become a research paper and a
+  title mentioning "accelerator" can't make a company page a directory.
+    universities (.edu, .ac.)                     university research  B
+    "news", "times" in the site name              news                 B
+    industry / market reports, whitepapers        industry report      B
+    an organization's own website                 startup / company    A
+    anything else                                 other                C
+
+Limitation: rules can't truly judge reputation; the lists in sources.py are
+the place to improve that.
 """
+import html
 import re
 from dataclasses import dataclass
 from typing import Callable
@@ -30,6 +40,19 @@ from urllib.parse import urlparse
 
 from app.core.brain.schemas import EvidenceTier, ResearchCategory, SourceType
 from app.core.tools.search import SearchResult
+from app.domains.fyp.skills.research_evidence.sources import (
+    COMMUNITY_DATASET_SITES,
+    DISCUSSION_SITES,
+    GOVERNMENT_SUFFIXES,
+    INTERNATIONAL_BODIES,
+    NEWS_OUTLETS,
+    OFFICIAL_DATA_PORTALS,
+    OPEN_SOURCE_SITES,
+    PEER_REVIEWED_PUBLISHERS,
+    PREPRINT_SERVERS,
+    STARTUP_DIRECTORIES,
+    host_in,
+)
 
 
 @dataclass(frozen=True)
@@ -52,22 +75,28 @@ class _Page:
         text = " ".join((self.host, self.publisher))
         return any(word in text for word in words)
 
+    def on(self, *lists: list[str]) -> bool:
+        """The site is on one of the lists in sources.py."""
+        return any(host_in(self.host, domains) for domains in lists)
+
 
 def _is_government(page: _Page) -> bool:
     host = page.host
-    return any(host.endswith(s) or f"{s}." in host for s in (".gov", ".mil")) or host.startswith("gov.")
+    return (
+        any(host.endswith(suffix) or f"{suffix}." in host for suffix in GOVERNMENT_SUFFIXES)
+        or host.startswith("gov.")
+        or page.on(INTERNATIONAL_BODIES)
+    )
 
 
 def _is_university(page: _Page) -> bool:
     return any(page.host.endswith(s) or f"{s}." in page.host for s in (".edu", ".ac"))
 
 
-_NEWS_HOSTS = ("reuters.", "bbc.", "apnews.", "ft.com", "bloomberg.", "techcrunch.", "wired.",
-               "theverge.", "economist.", "nytimes.", "theguardian.", "dawn.com")
-
 # (does this rule match?, source type, tier) — checked top to bottom, first match wins.
 _RULES: list[tuple[Callable[[_Page], bool], SourceType, EvidenceTier]] = [
-    # ── Government (Tier A) ───────────────────────────────────────────────────
+    # ── Part 1: exact site lists ──────────────────────────────────────────────
+    (lambda p: p.on(OFFICIAL_DATA_PORTALS), SourceType.DATASET, EvidenceTier.A),
     (lambda p: _is_government(p) and (p.category == ResearchCategory.DATASETS
                                       or p.mentions("data.", "dataset")),
      SourceType.DATASET, EvidenceTier.A),
@@ -78,32 +107,29 @@ _RULES: list[tuple[Callable[[_Page], bool], SourceType, EvidenceTier]] = [
     (lambda p: _is_government(p) and p.mentions("programme", "program"),
      SourceType.OFFICIAL_PROGRAM, EvidenceTier.A),
     (_is_government, SourceType.GOVERNMENT_INITIATIVE, EvidenceTier.A),
+    (lambda p: p.on(NEWS_OUTLETS), SourceType.NEWS, EvidenceTier.B),
+    (lambda p: p.on(PREPRINT_SERVERS), SourceType.RESEARCH_PAPER, EvidenceTier.B),
+    (lambda p: p.on(PEER_REVIEWED_PUBLISHERS), SourceType.RESEARCH_PAPER, EvidenceTier.A),
+    (lambda p: p.on(STARTUP_DIRECTORIES), SourceType.STARTUP, EvidenceTier.C),
+    (lambda p: p.on(DISCUSSION_SITES), SourceType.OTHER, EvidenceTier.C),
+    (lambda p: p.on(COMMUNITY_DATASET_SITES), SourceType.DATASET, EvidenceTier.B),
+    (lambda p: p.on(OPEN_SOURCE_SITES), SourceType.OPEN_SOURCE, EvidenceTier.B),
 
-    # ── Research ──────────────────────────────────────────────────────────────
-    (lambda p: p.mentions("arxiv", "preprint"), SourceType.RESEARCH_PAPER, EvidenceTier.B),
-    (lambda p: p.mentions("doi.org", "journal", "peer-reviewed"),
+    # ── Part 2: word clues (site name and publisher only) ─────────────────────
+    (lambda p: p.site_is("arxiv", "preprint"), SourceType.RESEARCH_PAPER, EvidenceTier.B),
+    (lambda p: p.site_is("doi.org", "journal", "peer-reviewed"),
      SourceType.RESEARCH_PAPER, EvidenceTier.A),
     (_is_university, SourceType.UNIVERSITY_RESEARCH, EvidenceTier.B),
-
-    # ── Discovery-only sources (Tier C) — checked before company/news rules ──
-    (lambda p: p.site_is("directory", "crunchbase", "aggregator", "accelerator"),
+    (lambda p: p.site_is("directory", "aggregator", "accelerator"),
      SourceType.STARTUP, EvidenceTier.C),
-    (lambda p: p.host.startswith("blog.") or "/blog" in p.path
-     or p.site_is("blog", "medium.com", "reddit.", "forum", "substack."),
+    (lambda p: p.host.startswith("blog.") or "/blog" in p.path or p.site_is("blog", "forum"),
      SourceType.OTHER, EvidenceTier.C),
-
-    # ── Datasets, open source, news (Tier B) ──────────────────────────────────
-    (lambda p: p.category == ResearchCategory.DATASETS
-     or p.mentions("kaggle.", "huggingface.", "dataset"),
+    (lambda p: p.category == ResearchCategory.DATASETS or p.site_is("dataset"),
      SourceType.DATASET, EvidenceTier.B),
-    (lambda p: p.mentions("github.com", "gitlab.com"), SourceType.OPEN_SOURCE, EvidenceTier.B),
-    (lambda p: any(h in p.host for h in _NEWS_HOSTS) or p.site_is("news", "times"),
-     SourceType.NEWS, EvidenceTier.B),
+    (lambda p: p.site_is("news", "times"), SourceType.NEWS, EvidenceTier.B),
     (lambda p: p.mentions("industry report", "market report", "whitepaper"),
      SourceType.INDUSTRY_REPORT, EvidenceTier.B),
-
-    # ── Official organization websites (Tier A) ───────────────────────────────
-    (lambda p: p.category == ResearchCategory.ORGANIZATIONS and p.mentions("startup"),
+    (lambda p: p.category == ResearchCategory.ORGANIZATIONS and p.site_is("startup"),
      SourceType.STARTUP, EvidenceTier.A),
     (lambda p: p.category == ResearchCategory.ORGANIZATIONS, SourceType.COMPANY, EvidenceTier.A),
 ]
@@ -125,12 +151,53 @@ def classify(result: SearchResult, category: ResearchCategory) -> tuple[SourceTy
     return SourceType.OTHER, EvidenceTier.C
 
 
+# ── Organization ──────────────────────────────────────────────────────────────
+
+# A Google Scholar publication line: "J Smith, A Lee - IEEE Access, 2024 - ieeexplore.ieee.org"
+_SCHOLAR_LINE = re.compile(r"^.+?\s-\s(?P<venue>.+?)\s-\s\S+$")
+_YEAR_SUFFIX = re.compile(r",?\s*(19|20)\d{2}\s*$")
+
+
+def _looks_like_a_link(text: str) -> bool:
+    """e.g. "www.navy.mil › programme" or "harbor-ai.com" — a displayed link, not a name."""
+    return "›" in text or (" " not in text and "." in text)
+
+
 def organization_name(result: SearchResult) -> str:
-    """The publisher if known, otherwise the website's host (without 'www.')."""
-    if result.publisher and result.publisher.strip():
-        return result.publisher.strip()
+    """
+    Who is behind the source:
+      - a Scholar publication line → the journal / venue ("IEEE Access")
+      - a real publisher name → as given ("Reuters", "Harbor AI")
+      - otherwise → the website's host without "www." ("navy.mil")
+    """
+    publisher = (result.publisher or "").strip()
+    match = _SCHOLAR_LINE.match(publisher)
+    if match:
+        venue = _YEAR_SUFFIX.sub("", match.group("venue")).strip()
+        if venue:
+            return venue
+    if publisher and not _looks_like_a_link(publisher):
+        return publisher
     host = urlparse(result.url).hostname or result.url
     return host.removeprefix("www.")
+
+
+# ── Text ──────────────────────────────────────────────────────────────────────
+
+_TAG = re.compile(r"<[^>]+>")
+_SPACE_BEFORE_PUNCTUATION = re.compile(r"\s+([.,;:!?])")
+# Snippets often start with the date: "Mar 3, 2026 — " or "3 days ago ... "
+_LEADING_DATE = re.compile(
+    r"^(?:\d+\s+\w+\s+ago|[A-Z][a-z]{2,8}\.?\s+\d{1,2},\s+\d{4}|\d{1,2}\s+[A-Z][a-z]{2,8}\s+\d{4})\s*[—–\-·.:]+\s*"
+)
+
+
+def clean_snippet(text: str) -> str:
+    """Remove HTML, decode entities (&amp; → &), drop a leading date and tidy spaces."""
+    text = html.unescape(_TAG.sub(" ", text))
+    text = " ".join(text.split())
+    text = _SPACE_BEFORE_PUNCTUATION.sub(r"\1", text)      # "congestion ." → "congestion."
+    return _LEADING_DATE.sub("", text).strip()
 
 
 def split_snippet(snippet: str) -> tuple[str, str]:
@@ -139,8 +206,10 @@ def split_snippet(snippet: str) -> tuple[str, str]:
 
     Search snippets usually open with what the page is about (the problem)
     and follow with detail (the insight). A one-sentence snippet is used for both.
+    The snippet is cleaned first (HTML, entities, a leading date).
     """
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", snippet.strip()) if s.strip()]
+    snippet = clean_snippet(snippet) or snippet.strip()
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", snippet) if s.strip()]
     if len(sentences) == 1:
         return sentences[0], sentences[0]
     return sentences[0], " ".join(sentences[1:])

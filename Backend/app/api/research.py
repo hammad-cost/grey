@@ -26,6 +26,7 @@ from app.api.projects import get_discovery_graph
 from app.core.brain.database import get_session, get_session_factory
 from app.core.brain.repository import ResearchAlreadyRunningError, WorkspaceBrainRepository
 from app.core.config import settings
+from app.core.tools import search_provider_label
 from app.domains.fyp.schemas.responses import EvidenceListResponse
 from app.domains.fyp.workflows.discovery import (
     ProjectNotFoundError,
@@ -60,7 +61,7 @@ async def start_research(
             workspace_id,
             WorkspaceBrainRepository(session),
             graph,
-            provider_name=settings.search_provider.strip().lower(),
+            provider_name=search_provider_label(settings),
         )
     except ProjectNotFoundError as error:
         await session.close()

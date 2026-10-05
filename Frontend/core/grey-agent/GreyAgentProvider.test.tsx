@@ -85,17 +85,69 @@ const researchCompleted = researchEvent("research_completed", 6, {
   },
 });
 
+/** research_completed as Release 0.3 sends it: problems should be found next. */
+const researchCompletedFindProblems: GreyEvent = {
+  ...researchCompleted,
+  allowed_actions: ["extractProblems"],
+};
+
+const problemsStarted: GreyEvent = {
+  ...researchEvent("problem_extraction_started", 0),
+  brain_patch: { problem_status: "running" },
+};
+
+const problemOptionsReady: GreyEvent = {
+  type: "problem_options_ready",
+  workspace_id: "w_123",
+  domain: "fyp",
+  workflow: "discovery",
+  stage: "PROBLEM_OPTIONS",
+  status: "awaiting_user",
+  data: {
+    label: "Problem options ready",
+    completed_steps: 4,
+    total_steps: 4,
+    problems: [{ id: "p-1", title: "Problem one" }, { id: "p-2", title: "Problem two" }, { id: "p-3", title: "Problem three" }],
+  },
+  brain_patch: { workflow_state: "PROBLEM_OPTIONS", problem_status: "options_ready", problem_option_count: 3 },
+  allowed_actions: ["selectProblem"],
+};
+
+const problemSelected: GreyEvent = {
+  type: "problem_selected",
+  workspace_id: "w_123",
+  domain: "fyp",
+  workflow: "discovery",
+  stage: "PROBLEM_SELECTED",
+  status: "complete",
+  data: { problem: { id: "p-2", title: "Problem two" } },
+  brain_patch: {
+    workflow_state: "PROBLEM_SELECTED",
+    selected_problem_id: "p-2",
+    selected_problem_title: "Problem two",
+  },
+  allowed_actions: [],
+};
+
+/** A streamed reply with these events, one JSON per line. */
+function streamOf(...events: GreyEvent[]) {
+  return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
+}
+
 /** A tiny test component that exposes adapter state and actions. */
 function Probe() {
   const state = useGreyUIState();
   const { error } = useGreyAgent();
-  const { startProject, selectIndustry, selectBranch, startResearch } = useGreyActions();
+  const { startProject, selectIndustry, selectBranch, startResearch, extractProblems, selectProblem } =
+    useGreyActions();
   return (
     <>
       <button onClick={() => startProject()}>start</button>
       <button onClick={() => selectIndustry("Finance")}>pick finance</button>
       <button onClick={() => selectBranch("Fraud Detection")}>pick fraud detection</button>
       <button onClick={() => startResearch().catch(() => {})}>research</button>
+      <button onClick={() => extractProblems().catch(() => {})}>find problems</button>
+      <button onClick={() => selectProblem("p-2").catch(() => {})}>pick problem 2</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -256,6 +308,116 @@ describe("GreyAgentProvider", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("error").textContent).toBe("Research is already running for 'w_123'.")
+    );
+  });
+  it("startResearch finds problems straight away when research allows it", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(researchStarted, researchCompletedFindProblems));
+    fetchMock.mockResolvedValueOnce(streamOf(problemsStarted, problemOptionsReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("research"));
+    await waitFor(() => expect(readState().currentStage).toBe("PROBLEM_OPTIONS"));
+
+    const urls = fetchMock.mock.calls.map(([url]) => url);
+    expect(urls[1]).toMatch(/\/projects\/w_123\/research$/);
+    expect(urls[2]).toMatch(/\/projects\/w_123\/problems$/);
+    expect(fetchMock.mock.calls[2][1].method).toBe("POST");
+
+    const state = readState();
+    expect(state.allowedActions).toEqual(["selectProblem"]);
+    expect(state.eventData?.problems).toHaveLength(3);
+    expect(state.brainSummary).toMatchObject({
+      researchStatus: "complete",
+      problemStatus: "options_ready",
+      problemOptionCount: 3,
+      workflowState: "PROBLEM_OPTIONS",
+    });
+  });
+
+  it("startResearch does not look for problems when research failed", async () => {
+    replyWith(projectCreated);
+    const failed = researchEvent("research_failed", 0, {
+      status: "blocked",
+      allowed_actions: ["startResearch"],
+    });
+    fetchMock.mockResolvedValueOnce(streamOf(researchStarted, failed));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("research"));
+    await waitFor(() => expect(readState().status).toBe("blocked"));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);   // create project + research only
+  });
+
+  it("extractProblems retries finding problems on its own", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(problemsStarted, problemOptionsReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("find problems"));
+    await waitFor(() => expect(readState().currentStage).toBe("PROBLEM_OPTIONS"));
+
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/problems$/);
+  });
+
+  it("extractProblems shows an error if the stream stops early", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(problemsStarted));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("find problems"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("error").textContent).toMatch(/connection to Grey was lost during finding problems/)
+    );
+  });
+
+  it("selectProblem posts the chosen problem and stores it in camelCase", async () => {
+    replyWith(projectCreated);
+    replyWith(problemSelected);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("pick problem 2"));
+    await waitFor(() => expect(readState().currentStage).toBe("PROBLEM_SELECTED"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/problem$/);
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toEqual({ problem_id: "p-2" });
+    expect(readState().brainSummary).toMatchObject({
+      selectedProblemId: "p-2",
+      selectedProblemTitle: "Problem two",
+      workflowState: "PROBLEM_SELECTED",
+    });
+  });
+
+  it("selectProblem shows the backend's message when the choice is rejected", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      json: async () => ({ detail: "'p-2' is not one of this project's problem options." }),
+    });
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("pick problem 2"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("error").textContent).toBe("'p-2' is not one of this project's problem options.")
     );
   });
 });

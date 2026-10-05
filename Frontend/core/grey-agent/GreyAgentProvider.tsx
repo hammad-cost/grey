@@ -34,10 +34,14 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
     branch_status: "branchStatus",
     workflow_state: "workflowState",
     research_status: "researchStatus",
+    problem_status: "problemStatus",
+    selected_problem_id: "selectedProblemId",
+    selected_problem_title: "selectedProblemTitle",
   } as const;
   const numberKeys = {
     evidence_count: "evidenceCount",
     high_quality_evidence_count: "highQualityEvidenceCount",
+    problem_option_count: "problemOptionCount",
   } as const;
 
   const summary: WorkspaceBrainSummary = {};
@@ -53,7 +57,7 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
 }
 
 /**
- * Research events carry a checklist summary (label, completed_steps, total_steps).
+ * Research and problem events carry a checklist summary (label, completed_steps, total_steps).
  * Turn it into GreyUIState.progress. Other events have no progress.
  */
 function toProgress(data: Record<string, unknown>): GreyUIState["progress"] {
@@ -91,6 +95,7 @@ export function GreyAgentProvider({ children }: GreyAgentProviderProps) {
       status: event.status,
       allowedActions: event.allowed_actions,
       eventData: event.data,
+      lastEventType: event.type,
       progress: toProgress(event.data),
       brainSummary: {
         ...prev.brainSummary,

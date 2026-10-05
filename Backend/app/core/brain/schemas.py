@@ -95,6 +95,7 @@ class ResearchCategory(str, Enum):
     OFFICIAL_SOURCES = "official_sources"  # government initiatives, reports, programs
     RESEARCH = "research"                  # papers and university research
     DATASETS = "datasets"                  # public datasets (found, not recommended)
+    NEWS = "news"                          # industry news (Release 0.4)
 
 
 class EvidenceSource(BaseModel):
@@ -152,6 +153,121 @@ class ResearchRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Problem opportunities (Release 0.3) ───────────────────────────────────────
+
+# The blueprint asks for a small number of strong problems (§13): 3–5.
+MAX_PROBLEM_OPTIONS = 5
+
+
+class ProblemTaskType(str, Enum):
+    """The kind of technical task behind a problem. A fixed list, so the UI and later skills can rely on it."""
+    ANOMALY_DETECTION = "anomaly_detection"
+    CLASSIFICATION = "classification"
+    FORECASTING = "forecasting"
+    OPTIMIZATION = "optimization"
+    NLP = "nlp"
+    COMPUTER_VISION = "computer_vision"
+    RECOMMENDATION = "recommendation"
+    DECISION_SUPPORT = "decision_support"
+    OTHER = "other"
+
+
+class ProblemStatus(str, Enum):
+    """A problem option is a candidate until the student selects it."""
+    CANDIDATE = "candidate"
+    SELECTED = "selected"
+
+
+class EvidenceStrength(BaseModel):
+    """How many cited sources of each tier back a problem. Counted by code, never by the LLM."""
+    tier_a: int = Field(default=0, ge=0)
+    tier_b: int = Field(default=0, ge=0)
+    tier_c: int = Field(default=0, ge=0)
+
+
+class ProblemEvidenceLink(BaseModel):
+    """One piece of stored evidence that supports a problem, and the point it supports."""
+    evidence_source_id: str = Field(min_length=1)
+    supporting_point: str = Field(min_length=1)
+
+
+class ProblemCandidate(BaseModel):
+    """
+    One validated problem opportunity, ready to be saved to the Project Brain.
+
+    This is what the Problem Extraction skill returns. Every problem cites
+    evidence that is already stored for the project (by its id), so the
+    student can always see where the idea came from (blueprint §10, §14).
+    """
+    title: str = Field(min_length=1, max_length=120)          # e.g. "Abnormal vessel movement detection"
+    real_world_problem: str = Field(min_length=1)            # the pain point organizations face
+    observed_solutions: str = Field(min_length=1)            # what organizations are building (not the problem itself)
+    technical_problem: str = Field(min_length=1)             # the underlying technical challenge
+    task_type: ProblemTaskType
+    why_it_matters: str = Field(min_length=1)
+    possible_fyp_direction: str = Field(min_length=1)        # a student-sized project idea
+    evidence: list[ProblemEvidenceLink] = Field(min_length=1)
+    evidence_strength: EvidenceStrength
+
+
+class ProblemSourceDetail(BaseModel):
+    """A cited source as shown with a stored problem ("View sources")."""
+    evidence_source_id: str
+    supporting_point: str
+    title: str
+    organization: str
+    url: str
+    source_type: SourceType
+    evidence_tier: EvidenceTier
+    published_date: date | None = None
+
+
+class StoredProblemCandidate(BaseModel):
+    """A problem option as read back from the Project Brain, with its cited sources."""
+    id: str
+    workspace_id: str
+    problem_run_id: str
+    rank: int                               # 1 = strongest
+    status: ProblemStatus
+    title: str
+    real_world_problem: str
+    observed_solutions: str
+    technical_problem: str
+    task_type: ProblemTaskType
+    why_it_matters: str
+    possible_fyp_direction: str
+    evidence: list[ProblemSourceDetail]
+    evidence_strength: EvidenceStrength
+
+
+class ProblemRunStatus(str, Enum):
+    """Lifecycle of one problem-extraction attempt."""
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class ProblemRun(BaseModel):
+    """One attempt at turning a project's evidence into problem options."""
+    id: str
+    workspace_id: str
+    research_run_id: str                    # the evidence this attempt used
+    status: ProblemRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    # Which LLM produced the options (filled in when the run completes)
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    # Quality counts: drafts the LLM returned, options kept, and why the rest were rejected
+    candidates_generated: int = 0
+    candidates_kept: int = 0
+    rejection_summary: dict[str, int] = {}
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -171,6 +287,11 @@ class WorkspaceBrainSnapshot(BaseModel):
     # The latest research attempt (None until research has started).
     # The evidence itself is read separately with list_evidence().
     research: ResearchRun | None = None
+
+    # The latest problem-extraction attempt and the student's chosen problem
+    # (Release 0.3). The options are read separately with list_problem_candidates().
+    problem_run: ProblemRun | None = None
+    selected_problem: StoredProblemCandidate | None = None
 
     created_at: datetime
     updated_at: datetime

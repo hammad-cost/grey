@@ -14,7 +14,13 @@ This is the state machine that controls the journey:
       ↓
     evidence_research   ← runs the Evidence Research skill (Release 0.2)
       ↓
-    END                 ← Release 0.2 stops here; problem extraction comes later
+      ⏸  pause before problem extraction (it runs as its own streamed step)
+      ↓
+    problem_extraction  ← runs the Problem Extraction skill (Release 0.3)
+      ↓
+    problem_selection   ← HITL interrupt (student picks a problem)
+      ↓
+    END                 ← Release 0.3 stops here
 
 How it works:
   - The graph is compiled with a MemorySaver checkpointer.
@@ -22,9 +28,10 @@ How it works:
     students do not interfere with each other.
   - When the graph hits interrupt(), it pauses. The API layer calls
     graph.ainvoke(Command(resume=<selection>), config=...) to continue.
-  - The graph also pauses *before* evidence_research (interrupt_before).
-    This is not a student decision — it lets research run as its own,
-    streamed step (see research_runner.py) instead of inside the branch request.
+  - The graph also pauses *before* evidence_research and problem_extraction
+    (interrupt_before). These are not student decisions — they let each long
+    step run as its own streamed request (see research_runner.py and
+    problem_runner.py) instead of inside the previous request.
   - The durable Project Brain (database) is updated by the API layer and
     the research runner, not by the graph itself.
 """
@@ -36,12 +43,16 @@ from app.domains.fyp.workflows.discovery.nodes import (
     branch_selection_node,
     industry_selection_node,
     make_evidence_research_node,
+    make_problem_extraction_node,
+    problem_selection_node,
 )
 from app.domains.fyp.workflows.discovery.state import DiscoveryState
 
 # Node names used outside this file (e.g. by the research runner).
 BRANCH_SELECTION_NODE = "branch_selection"
 EVIDENCE_RESEARCH_NODE = "evidence_research"
+PROBLEM_EXTRACTION_NODE = "problem_extraction"
+PROBLEM_SELECTION_NODE = "problem_selection"
 
 
 def build_discovery_graph(checkpointer=None, skills: SkillRegistry | None = None):
@@ -64,10 +75,10 @@ def build_discovery_graph(checkpointer=None, skills: SkillRegistry | None = None
     # ── Nodes ─────────────────────────────────────────────────────────────────
     builder.add_node("industry_selection", industry_selection_node)
     builder.add_node(BRANCH_SELECTION_NODE, branch_selection_node)
-    builder.add_node(
-        EVIDENCE_RESEARCH_NODE,
-        make_evidence_research_node(skills if skills is not None else skill_registry),
-    )
+    registry = skills if skills is not None else skill_registry
+    builder.add_node(EVIDENCE_RESEARCH_NODE, make_evidence_research_node(registry))
+    builder.add_node(PROBLEM_EXTRACTION_NODE, make_problem_extraction_node(registry))
+    builder.add_node(PROBLEM_SELECTION_NODE, problem_selection_node)
 
     # ── Edges ─────────────────────────────────────────────────────────────────
     # Entry point: the graph always starts at industry selection.
@@ -76,11 +87,13 @@ def build_discovery_graph(checkpointer=None, skills: SkillRegistry | None = None
     # Linear transitions — no branching or conditions needed yet.
     builder.add_edge("industry_selection", BRANCH_SELECTION_NODE)
     builder.add_edge(BRANCH_SELECTION_NODE, EVIDENCE_RESEARCH_NODE)
-    builder.add_edge(EVIDENCE_RESEARCH_NODE, END)
+    builder.add_edge(EVIDENCE_RESEARCH_NODE, PROBLEM_EXTRACTION_NODE)
+    builder.add_edge(PROBLEM_EXTRACTION_NODE, PROBLEM_SELECTION_NODE)
+    builder.add_edge(PROBLEM_SELECTION_NODE, END)
 
     return builder.compile(
         checkpointer=checkpointer or MemorySaver(),
-        interrupt_before=[EVIDENCE_RESEARCH_NODE],
+        interrupt_before=[EVIDENCE_RESEARCH_NODE, PROBLEM_EXTRACTION_NODE],
     )
 
 

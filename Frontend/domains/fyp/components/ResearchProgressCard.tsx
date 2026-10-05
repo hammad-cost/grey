@@ -3,12 +3,14 @@
 /**
  * ResearchProgressCard — Grey researching evidence for the chosen branch.
  *
- * Shown at the EVIDENCE_RESEARCH stage. It has four looks:
+ * Shown at the EVIDENCE_RESEARCH stage. It has five looks:
  *
  *   ready    → "Grey is ready to research" + Start research button
  *   running  → live checklist + source counts (updated by each streamed event)
  *   complete → summary of the evidence saved to the Project Brain
  *   failed   → a calm message + Try again button
+ *   compact  → once Grey moves on to finding problems (problem_* events),
+ *              a one-line research summary; ProblemProgressCard takes over
  *
  * Contract with the Grey adapter (same as the selectors):
  *   - Everything shown comes from the latest backend event (eventData) and
@@ -18,25 +20,30 @@
  */
 
 import { Actions, useGreyActions, useGreyAgent } from "@/core/grey-agent";
+import { readSteps, StepChecklist } from "./StepChecklist";
 
-type StepState = "done" | "active" | "pending";
-type ResearchStep = { id: string; label: string; state: StepState };
 type ResearchSummary = {
   total_sources: number;
   high_quality_count: number;
   by_tier: Record<string, number>;
+  by_category?: Record<string, number>;
+  startups_confirmed?: number;
 };
 
-/** Read the checklist from the event data, ignoring anything malformed. */
-function readSteps(eventData?: Record<string, unknown>): ResearchStep[] {
-  const value = eventData?.steps;
-  if (!Array.isArray(value)) return [];
-  return value.filter(
-    (step): step is ResearchStep =>
-      typeof step?.id === "string" &&
-      typeof step?.label === "string" &&
-      ["done", "active", "pending"].includes(step?.state)
-  );
+/** "3 startups confirmed · 2 news articles · …" — only the kinds that were found. */
+function foundByType(summary: ResearchSummary): string {
+  const count = (key: string) => summary.by_category?.[key] ?? 0;
+  const parts: [number, string, string][] = [
+    [summary.startups_confirmed ?? 0, "startup confirmed", "startups confirmed"],
+    [count("news"), "news article", "news articles"],
+    [count("official_sources"), "government source", "government sources"],
+    [count("research"), "research paper", "research papers"],
+    [count("datasets"), "dataset", "datasets"],
+  ];
+  return parts
+    .filter(([n]) => n > 0)
+    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`)
+    .join(" · ");
 }
 
 function readNumber(eventData: Record<string, unknown> | undefined, key: string): number {
@@ -49,22 +56,34 @@ function readSummary(eventData?: Record<string, unknown>): ResearchSummary | nul
   return value && typeof value.total_sources === "number" ? value : null;
 }
 
-const STEP_ICON: Record<StepState, string> = { done: "✓", active: "●", pending: "○" };
-const STEP_STYLE: Record<StepState, string> = {
-  done: "text-green-600",
-  active: "text-accent font-medium",
-  pending: "text-gray-400",
-};
-
 export function ResearchProgressCard() {
   const { state, isLoading, error } = useGreyAgent();
   const { startResearch } = useGreyActions();
 
   if (state.currentStage !== "EVIDENCE_RESEARCH") return null;
 
-  const data = state.eventData;
   const industry = state.brainSummary?.industry;
   const branch = state.brainSummary?.branch;
+
+  // Grey has moved on to finding problems: show a short research summary only.
+  if (state.lastEventType?.startsWith("problem_")) {
+    return (
+      <section
+        className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm"
+        aria-label="Evidence research"
+      >
+        <p className="text-sm text-gray-700">
+          <span className="text-green-600" aria-hidden="true">✓ </span>
+          Research complete — Grey saved{" "}
+          <strong>{state.brainSummary?.evidenceCount ?? 0} sources</strong> about{" "}
+          <strong>{branch}</strong>, including {state.brainSummary?.highQualityEvidenceCount ?? 0}{" "}
+          high-quality (Tier A).
+        </p>
+      </section>
+    );
+  }
+
+  const data = state.eventData;
   const steps = readSteps(data);
   const summary = readSummary(data);
   const sourcesFound = readNumber(data, "sources_found");
@@ -106,25 +125,14 @@ export function ResearchProgressCard() {
       {/* Ready: explain what will happen */}
       {steps.length === 0 && !isFailed && (
         <p className="mt-3 text-sm text-gray-600">
-          Grey will look for organizations, official sources, research and public
-          datasets about real problems in this branch, then save the evidence to
-          your Project Brain.
+          Grey will discover startups working in this branch and confirm them on their
+          own websites, then check industry news, government sources, research papers
+          and public datasets — and save the evidence to your Project Brain.
         </p>
       )}
 
       {/* Running / complete: the checklist */}
-      {steps.length > 0 && !isFailed && (
-        <ul className="mt-4 flex flex-col gap-1.5 text-sm" aria-label="Research steps">
-          {steps.map((step) => (
-            <li key={step.id} className={STEP_STYLE[step.state]} data-state={step.state}>
-              <span className="inline-block w-5" aria-hidden="true">
-                {STEP_ICON[step.state]}
-              </span>
-              {step.label}
-            </li>
-          ))}
-        </ul>
-      )}
+      {steps.length > 0 && !isFailed && <StepChecklist steps={steps} label="Research steps" />}
 
       {/* Source counts while running */}
       {steps.length > 0 && !isComplete && !isFailed && (
@@ -141,12 +149,13 @@ export function ResearchProgressCard() {
             Brain, including <strong>{summary.high_quality_count} high-quality</strong>{" "}
             (Tier A) sources.
           </p>
+          {foundByType(summary) && <p className="mt-1">{foundByType(summary)}</p>}
           <p className="mt-1 text-gray-500">
             Tier A: {summary.by_tier.A ?? 0} · Tier B: {summary.by_tier.B ?? 0} · Tier C:{" "}
             {summary.by_tier.C ?? 0}
           </p>
           <p className="mt-2 text-gray-400">
-            Next, Grey will turn this evidence into problem options (coming in a future release).
+            Next, Grey turns this evidence into real problem options for you to choose from.
           </p>
         </div>
       )}

@@ -1,10 +1,10 @@
 """
-Tests for the Skill base protocol, SkillRegistry, and LLM Gateway stub.
+Tests for the Skill base protocol and SkillRegistry.
+(The LLM Gateway has its own tests in test_llm_gateway.py.)
 """
 import pytest
 from pydantic import BaseModel
 
-from app.core.llm.gateway import LLMGateway, ModelPolicy
 from app.core.skills.base import Skill, SkillMetadata
 from app.core.skills.registry import SkillRegistry
 
@@ -99,27 +99,3 @@ def test_registry_duplicate_raises_value_error():
     registry.register(_EchoSkill())
     with pytest.raises(ValueError, match="already registered"):
         registry.register(_EchoSkill())
-
-
-# ── LLM Gateway ───────────────────────────────────────────────────────────────
-
-async def test_gateway_raises_not_implemented():
-    """
-    The LLM Gateway raises NotImplementedError in Release 0.1.
-    This confirms that no accidental LLM calls are made during this release.
-    """
-    gateway = LLMGateway()
-    with pytest.raises(NotImplementedError):
-        await gateway.generate_structured(
-            task="Test task",
-            input={"key": "value"},
-            output_schema=_EchoOutput,
-        )
-
-
-def test_model_policy_defaults():
-    """ModelPolicy has sensible defaults."""
-    policy = ModelPolicy()
-    assert policy.model == "claude-sonnet-4-6"
-    assert policy.temperature == 0.2
-    assert policy.max_tokens == 2048

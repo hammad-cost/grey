@@ -24,9 +24,11 @@ from main import app, register_skills
 
 EXPECTED_TYPES = [
     "research_started",
-    "searching_sources", "sources_found",     # organizations
-    "searching_sources", "sources_found",     # official sources
-    "searching_sources", "sources_found",     # research
+    "searching_sources", "sources_found",     # discover startups
+    "searching_sources", "sources_found",     # confirm on startup websites
+    "searching_sources", "sources_found",     # industry news
+    "searching_sources", "sources_found",     # government
+    "searching_sources", "sources_found",     # research papers
     "searching_sources", "sources_found",     # datasets
     "evaluating_evidence",
     "storing_evidence",

@@ -2,7 +2,8 @@
 WorkspaceBrainRepository
 
 The only place in the codebase that reads from and writes to the
-Project Brain tables (workspace_brain, research_run, evidence_source).
+Project Brain tables (workspace_brain, research_run, evidence_source,
+problem_run, problem_candidate, problem_evidence).
 Everything else (API routes, workflows, skills) calls this repository —
 they never touch the database directly.
 
@@ -16,14 +17,29 @@ from enum import Enum
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.brain.models import EvidenceSourceRecord, ResearchRunRecord, WorkspaceBrainRecord
+from app.core.brain.models import (
+    EvidenceSourceRecord,
+    ProblemCandidateRecord,
+    ProblemEvidenceRecord,
+    ProblemRunRecord,
+    ResearchRunRecord,
+    WorkspaceBrainRecord,
+)
 from app.core.brain.schemas import (
+    MAX_PROBLEM_OPTIONS,
     DecisionStatus,
     EvidenceSource,
+    EvidenceStrength,
     EvidenceTier,
+    ProblemCandidate,
+    ProblemRun,
+    ProblemRunStatus,
+    ProblemSourceDetail,
+    ProblemStatus,
     ResearchRun,
     ResearchStatus,
     StoredEvidenceSource,
+    StoredProblemCandidate,
     WorkflowState,
     WorkspaceBrainSnapshot,
 )
@@ -32,9 +48,20 @@ from app.core.brain.schemas import (
 # (e.g. the server stopped mid-research) and no longer blocks a new run.
 STALE_RESEARCH_AFTER = timedelta(minutes=10)
 
+# The same rule for problem-extraction runs.
+STALE_PROBLEM_RUN_AFTER = timedelta(minutes=10)
+
 
 class ResearchAlreadyRunningError(Exception):
     """Raised when research is started for a project that already has a run in progress."""
+
+
+class ProblemRunAlreadyRunningError(Exception):
+    """Raised when problem extraction is started for a project that already has a run in progress."""
+
+
+class ProblemSelectionError(ValueError):
+    """Raised when a problem cannot be selected (wrong stage, or not one of the project's options)."""
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -85,11 +112,99 @@ class WorkspaceBrainRepository:
             raise ValueError(f"Research run '{run_id}' not found.")
         return run
 
+    async def _latest_problem_run_record(self, workspace_id: str) -> ProblemRunRecord | None:
+        result = await self._session.execute(
+            select(ProblemRunRecord)
+            .where(ProblemRunRecord.workspace_id == workspace_id)
+            .order_by(ProblemRunRecord.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_problem_run_record(self, run_id: str) -> ProblemRunRecord:
+        run = await self._session.get(ProblemRunRecord, run_id)
+        if run is None:
+            raise ValueError(f"Problem run '{run_id}' not found.")
+        return run
+
+    async def _has_problem_options(self, workspace_id: str) -> bool:
+        result = await self._session.execute(
+            select(ProblemCandidateRecord.id)
+            .where(ProblemCandidateRecord.workspace_id == workspace_id)
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def _to_stored_problems(
+        self, records: list[ProblemCandidateRecord]
+    ) -> list[StoredProblemCandidate]:
+        """Attach each problem's cited sources (strongest first) and build the typed objects."""
+        if not records:
+            return []
+
+        result = await self._session.execute(
+            select(ProblemEvidenceRecord, EvidenceSourceRecord)
+            .join(EvidenceSourceRecord, ProblemEvidenceRecord.evidence_source_id == EvidenceSourceRecord.id)
+            .where(ProblemEvidenceRecord.problem_id.in_([r.id for r in records]))
+            .order_by(EvidenceSourceRecord.evidence_tier.asc(), EvidenceSourceRecord.title.asc())
+        )
+        sources: dict[str, list[ProblemSourceDetail]] = {r.id: [] for r in records}
+        for link, source in result.all():
+            sources[link.problem_id].append(
+                ProblemSourceDetail(
+                    evidence_source_id=source.id,
+                    supporting_point=link.supporting_point,
+                    title=source.title,
+                    organization=source.organization,
+                    url=source.url,
+                    source_type=source.source_type,
+                    evidence_tier=source.evidence_tier,
+                    published_date=source.published_date,
+                )
+            )
+
+        return [
+            StoredProblemCandidate(
+                id=r.id,
+                workspace_id=r.workspace_id,
+                problem_run_id=r.problem_run_id,
+                rank=r.rank,
+                status=r.status,
+                title=r.title,
+                real_world_problem=r.real_world_problem,
+                observed_solutions=r.observed_solutions,
+                technical_problem=r.technical_problem,
+                task_type=r.task_type,
+                why_it_matters=r.why_it_matters,
+                possible_fyp_direction=r.possible_fyp_direction,
+                evidence=sources[r.id],
+                evidence_strength=EvidenceStrength(
+                    tier_a=r.tier_a_count, tier_b=r.tier_b_count, tier_c=r.tier_c_count
+                ),
+            )
+            for r in records
+        ]
+
+    async def _selected_problem(self, workspace_id: str) -> StoredProblemCandidate | None:
+        result = await self._session.execute(
+            select(ProblemCandidateRecord).where(
+                ProblemCandidateRecord.workspace_id == workspace_id,
+                ProblemCandidateRecord.status == ProblemStatus.SELECTED.value,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            return None
+        return (await self._to_stored_problems([record]))[0]
+
     async def _to_snapshot(self, record: WorkspaceBrainRecord) -> WorkspaceBrainSnapshot:
-        """Build a snapshot, including the project's latest research run."""
+        """Build a snapshot, including the latest research run, latest problem run and chosen problem."""
         snapshot = WorkspaceBrainSnapshot.model_validate(record)
         run = await self._latest_run_record(record.workspace_id)
         snapshot.research = ResearchRun.model_validate(run) if run else None
+        problem_run = await self._latest_problem_run_record(record.workspace_id)
+        snapshot.problem_run = ProblemRun.model_validate(problem_run) if problem_run else None
+        snapshot.selected_problem = await self._selected_problem(record.workspace_id)
         return snapshot
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -123,6 +238,20 @@ class WorkspaceBrainRepository:
             )
         )
         return [StoredEvidenceSource.model_validate(r) for r in result.scalars().all()]
+
+    async def get_latest_problem_run(self, workspace_id: str) -> ProblemRun | None:
+        """Return the most recent problem-extraction attempt for a project, or None."""
+        run = await self._latest_problem_run_record(workspace_id)
+        return ProblemRun.model_validate(run) if run else None
+
+    async def list_problem_candidates(self, workspace_id: str) -> list[StoredProblemCandidate]:
+        """Return the project's current problem options, strongest (rank 1) first, with their sources."""
+        result = await self._session.execute(
+            select(ProblemCandidateRecord)
+            .where(ProblemCandidateRecord.workspace_id == workspace_id)
+            .order_by(ProblemCandidateRecord.rank.asc())
+        )
+        return await self._to_stored_problems(list(result.scalars().all()))
 
     # ── Write: decisions and workflow ─────────────────────────────────────────
 
@@ -247,6 +376,10 @@ class WorkspaceBrainRepository:
         if len(urls) != len(set(urls)):
             raise ValueError("Evidence contains duplicate URLs; de-duplicate before saving.")
 
+        # Problem options cite this evidence, so it can't be swapped out underneath them.
+        if await self._has_problem_options(run.workspace_id):
+            raise ValueError("Evidence can't be replaced after problem options exist.")
+
         # Replace the project's previous evidence with this run's evidence.
         await self._session.execute(
             delete(EvidenceSourceRecord).where(
@@ -292,3 +425,215 @@ class WorkspaceBrainRepository:
         await self._session.commit()
         await self._session.refresh(run)
         return ResearchRun.model_validate(run)
+
+    # ── Write: problem opportunities (Release 0.3) ────────────────────────────
+
+    async def start_problem_run(self, workspace_id: str, research_run_id: str) -> ProblemRun:
+        """
+        Record that problem extraction has started, using the evidence of a completed research run.
+
+        Raises:
+            ValueError: the project does not exist, or the research run is not
+                        a completed run of this project.
+            ProblemRunAlreadyRunningError: an attempt is already in progress.
+                A run stuck in "running" for longer than STALE_PROBLEM_RUN_AFTER
+                is marked failed instead, so a crashed run can't block forever.
+        """
+        await self._require_record(workspace_id)
+
+        research = await self._session.get(ResearchRunRecord, research_run_id)
+        if (
+            research is None
+            or research.workspace_id != workspace_id
+            or research.status != ResearchStatus.COMPLETE.value
+        ):
+            raise ValueError(
+                f"Research run '{research_run_id}' is not a completed run of workspace '{workspace_id}'."
+            )
+
+        latest = await self._latest_problem_run_record(workspace_id)
+        if latest is not None and latest.status == ProblemRunStatus.RUNNING.value:
+            age = datetime.now(timezone.utc) - _as_utc(latest.started_at)
+            if age < STALE_PROBLEM_RUN_AFTER:
+                raise ProblemRunAlreadyRunningError(
+                    f"Problem extraction is already running for workspace '{workspace_id}'."
+                )
+            latest.status = ProblemRunStatus.FAILED.value
+            latest.error = "Problem extraction did not finish (marked as stale)."
+            latest.completed_at = datetime.now(timezone.utc)
+
+        run = ProblemRunRecord(
+            workspace_id=workspace_id,
+            research_run_id=research_run_id,
+            status=ProblemRunStatus.RUNNING.value,
+            # Set explicitly so a new run always sorts after the one it replaces.
+            started_at=datetime.now(timezone.utc),
+            rejection_summary={},
+        )
+        self._session.add(run)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ProblemRun.model_validate(run)
+
+    async def complete_problem_run(
+        self,
+        run_id: str,
+        candidates: list[ProblemCandidate],
+        *,
+        candidate_ids: list[str] | None = None,
+        provider: str,
+        model: str,
+        prompt_version: str,
+        candidates_generated: int,
+        rejection_summary: dict[str, int] | None = None,
+    ) -> ProblemRun:
+        """
+        Save the problem options from a finished run and mark the run complete.
+
+        `candidates` must already be ordered strongest first; they are saved
+        with rank 1, 2, 3… `candidate_ids` (optional, same order) lets the
+        workflow choose the ids, so its selection step and the Brain agree.
+        The project's previous options are replaced, and the
+        project moves to PROBLEM_OPTIONS — all in one commit, so the Brain
+        never holds half a result.
+
+        Raises:
+            ValueError: the run does not exist or is not running; a problem has
+                        already been selected; there are no candidates or more
+                        than MAX_PROBLEM_OPTIONS; a candidate cites the same
+                        source twice or cites evidence this project doesn't have.
+        """
+        run = await self._require_problem_run_record(run_id)
+        if run.status != ProblemRunStatus.RUNNING.value:
+            raise ValueError(f"Problem run '{run_id}' is not running (status: {run.status}).")
+        if await self._selected_problem(run.workspace_id) is not None:
+            raise ValueError("A problem has already been selected for this project.")
+        if not 1 <= len(candidates) <= MAX_PROBLEM_OPTIONS:
+            raise ValueError(
+                f"Expected 1–{MAX_PROBLEM_OPTIONS} problem options, got {len(candidates)}."
+            )
+        ids = candidate_ids or [str(uuid.uuid4()) for _ in candidates]
+        if len(ids) != len(candidates) or len(set(ids)) != len(ids):
+            raise ValueError("candidate_ids must give one unique id per candidate.")
+
+        # Every cited source must be evidence stored for THIS project.
+        result = await self._session.execute(
+            select(EvidenceSourceRecord.id).where(
+                EvidenceSourceRecord.workspace_id == run.workspace_id
+            )
+        )
+        known_evidence = set(result.scalars().all())
+        for candidate in candidates:
+            cited = [link.evidence_source_id for link in candidate.evidence]
+            if len(cited) != len(set(cited)):
+                raise ValueError(f"Problem '{candidate.title}' cites the same source twice.")
+            unknown = set(cited) - known_evidence
+            if unknown:
+                raise ValueError(
+                    f"Problem '{candidate.title}' cites evidence this project doesn't have: {sorted(unknown)}"
+                )
+
+        # Replace the project's previous options with this run's options.
+        old_ids = select(ProblemCandidateRecord.id).where(
+            ProblemCandidateRecord.workspace_id == run.workspace_id
+        )
+        await self._session.execute(
+            delete(ProblemEvidenceRecord).where(ProblemEvidenceRecord.problem_id.in_(old_ids))
+        )
+        await self._session.execute(
+            delete(ProblemCandidateRecord).where(
+                ProblemCandidateRecord.workspace_id == run.workspace_id
+            )
+        )
+
+        for rank, (candidate_id, candidate) in enumerate(zip(ids, candidates), start=1):
+            record = ProblemCandidateRecord(
+                id=candidate_id,
+                workspace_id=run.workspace_id,
+                problem_run_id=run.id,
+                rank=rank,
+                status=ProblemStatus.CANDIDATE.value,
+                title=candidate.title,
+                real_world_problem=candidate.real_world_problem,
+                observed_solutions=candidate.observed_solutions,
+                technical_problem=candidate.technical_problem,
+                task_type=candidate.task_type.value,
+                why_it_matters=candidate.why_it_matters,
+                possible_fyp_direction=candidate.possible_fyp_direction,
+                tier_a_count=candidate.evidence_strength.tier_a,
+                tier_b_count=candidate.evidence_strength.tier_b,
+                tier_c_count=candidate.evidence_strength.tier_c,
+            )
+            self._session.add(record)
+            for link in candidate.evidence:
+                self._session.add(
+                    ProblemEvidenceRecord(
+                        problem_id=record.id,
+                        evidence_source_id=link.evidence_source_id,
+                        supporting_point=link.supporting_point,
+                    )
+                )
+
+        run.status = ProblemRunStatus.COMPLETE.value
+        run.completed_at = datetime.now(timezone.utc)
+        run.provider = provider
+        run.model = model
+        run.prompt_version = prompt_version
+        run.candidates_generated = candidates_generated
+        run.candidates_kept = len(candidates)
+        run.rejection_summary = dict(rejection_summary or {})
+
+        workspace = await self._require_record(run.workspace_id)
+        workspace.workflow_state = WorkflowState.PROBLEM_OPTIONS.value
+        workspace.updated_at = datetime.now(timezone.utc)
+
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ProblemRun.model_validate(run)
+
+    async def fail_problem_run(self, run_id: str, error: str) -> ProblemRun:
+        """
+        Mark a problem run as failed. Options from an earlier successful run are kept.
+
+        Raises:
+            ValueError: the run does not exist.
+        """
+        run = await self._require_problem_run_record(run_id)
+
+        run.status = ProblemRunStatus.FAILED.value
+        run.error = error
+        run.completed_at = datetime.now(timezone.utc)
+
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ProblemRun.model_validate(run)
+
+    async def select_problem(self, workspace_id: str, problem_id: str) -> StoredProblemCandidate:
+        """
+        Record the student's chosen problem (a mandatory decision, blueprint §15).
+
+        The chosen option becomes "selected"; the others stay "candidate" (nothing
+        is deleted). The project moves to PROBLEM_SELECTED in the same commit.
+
+        Raises:
+            ValueError: the project does not exist.
+            ProblemSelectionError: the project is not choosing a problem right now,
+                                   or `problem_id` is not one of its options.
+        """
+        workspace = await self._require_record(workspace_id)
+        if workspace.workflow_state != WorkflowState.PROBLEM_OPTIONS.value:
+            raise ProblemSelectionError(
+                f"Project '{workspace_id}' is not choosing a problem (stage: {workspace.workflow_state})."
+            )
+
+        candidate = await self._session.get(ProblemCandidateRecord, problem_id)
+        if candidate is None or candidate.workspace_id != workspace_id:
+            raise ProblemSelectionError(f"'{problem_id}' is not one of this project's problem options.")
+
+        candidate.status = ProblemStatus.SELECTED.value
+        workspace.workflow_state = WorkflowState.PROBLEM_SELECTED.value
+        workspace.updated_at = datetime.now(timezone.utc)
+
+        await self._session.commit()
+        await self._session.refresh(candidate)
+        return (await self._to_stored_problems([candidate]))[0]

@@ -39,10 +39,7 @@ WS = "ws-navy"
 
 EXPECTED_SEQUENCE = [
     EventType.RESEARCH_STARTED,
-    EventType.SEARCHING_SOURCES, EventType.SOURCES_FOUND,     # organizations
-    EventType.SEARCHING_SOURCES, EventType.SOURCES_FOUND,     # official sources
-    EventType.SEARCHING_SOURCES, EventType.SOURCES_FOUND,     # research
-    EventType.SEARCHING_SOURCES, EventType.SOURCES_FOUND,     # datasets
+    *[EventType.SEARCHING_SOURCES, EventType.SOURCES_FOUND] * 6,   # the six research steps (0.4)
     EventType.EVALUATING_EVIDENCE,
     EventType.STORING_EVIDENCE,
     EventType.RESEARCH_COMPLETED,
@@ -156,7 +153,7 @@ async def test_event_sequence(repo, graph):
     assert [e.type for e in events] == EXPECTED_SEQUENCE
 
 
-async def test_research_is_persisted_and_workflow_finishes(repo, graph):
+async def test_research_is_persisted_and_workflow_pauses_before_problems(repo, graph):
     await ready_for_research(repo, graph)
 
     session, events = await research(repo, graph)
@@ -176,9 +173,13 @@ async def test_research_is_persisted_and_workflow_finishes(repo, graph):
         "high_quality_evidence_count": session.run.high_quality_count,
     }
     assert done.data["summary"]["total_sources"] == len(evidence)
-    # The workflow ran to the end of Release 0.2.
+    assert done.data["summary"]["startups_confirmed"] >= 1
+    assert set(done.data["summary"]["by_category"]) == {
+        "organizations", "official_sources", "research", "datasets", "news",
+    }
+    # The workflow now pauses before problem extraction (Release 0.3).
     state = await graph.aget_state({"configurable": {"thread_id": WS}})
-    assert state.next == ()
+    assert state.next == ("problem_extraction",)
 
 
 async def test_event_envelope_fields(repo, graph):
@@ -188,7 +189,7 @@ async def test_event_envelope_fields(repo, graph):
     assert all(e.stage == "EVIDENCE_RESEARCH" and e.workspace_id == WS for e in events)
     assert all(e.status == EventStatus.RUNNING for e in events[:-1])
     assert events[-1].status == EventStatus.COMPLETE
-    assert events[-1].allowed_actions == []          # problem extraction is not in this release
+    assert events[-1].allowed_actions == [AllowedAction.EXTRACT_PROBLEMS]   # problems are found next (0.3)
     assert all(e.data["branch"] == "Navy" for e in events)
 
 

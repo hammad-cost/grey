@@ -36,8 +36,14 @@ class EventType(str, Enum):
     RESEARCH_COMPLETED = "research_completed"
     RESEARCH_FAILED = "research_failed"
 
-    # Future — defined here so event names are never magic strings
+    # Release 0.3 — problem opportunities. Safe activity only, never reasoning.
+    PROBLEM_EXTRACTION_STARTED = "problem_extraction_started"
+    PROBLEM_EXTRACTION_PROGRESS = "problem_extraction_progress"
     PROBLEM_OPTIONS_READY = "problem_options_ready"
+    PROBLEM_EXTRACTION_FAILED = "problem_extraction_failed"
+    PROBLEM_SELECTED = "problem_selected"
+
+    # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
     FYP_DIRECTION_READY = "fyp_direction_ready"
     DATASET_OPTIONS_READY = "dataset_options_ready"
@@ -72,6 +78,7 @@ class AllowedAction(str, Enum):
     SELECT_INDUSTRY = "selectIndustry"
     SELECT_BRANCH = "selectBranch"
     START_RESEARCH = "startResearch"       # run (or retry) evidence research
+    EXTRACT_PROBLEMS = "extractProblems"   # find (or retry finding) problem options from the evidence
     SELECT_PROBLEM = "selectProblem"
     REQUEST_MORE_PROBLEMS = "requestMoreProblems"
     APPROVE_FYP_DIRECTION = "approveFYPDirection"

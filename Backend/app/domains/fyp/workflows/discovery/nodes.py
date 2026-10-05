@@ -5,16 +5,21 @@ Each function here is one step in the Discovery workflow graph.
 Nodes receive the current LangGraph state and return a dict of updates.
 
 Rules:
-  - Nodes do not call the database directly — the API layer does that.
+  - Nodes do not call the database directly — the API layer and runners do that.
+    (problem_extraction hands its skill a read-only evidence reader, nothing more.)
   - Nodes do not decide what the frontend shows — the event system does that.
   - Nodes validate decisions and control state transitions.
   - Nodes pause at mandatory HITL points using interrupt().
 """
+import uuid
+
+from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.types import interrupt
 
 from app.core.brain.schemas import WorkflowState
 from app.core.skills.registry import SkillRegistry
+from app.domains.fyp.skills.problem_extraction.schemas import ProblemExtractionInput, ProblemProgress
 from app.domains.fyp.skills.research_evidence.schemas import (
     ResearchEvidenceInput,
     ResearchProgress,
@@ -137,3 +142,82 @@ def make_evidence_research_node(skills: SkillRegistry):
         }
 
     return evidence_research_node
+
+# ── Release 0.3: problem opportunities ────────────────────────────────────────
+
+# The name the Problem Extraction skill is registered under in the SkillRegistry.
+PROBLEM_SKILL_NAME = "problem_extraction"
+
+# Marks a problem-extraction progress update on LangGraph's custom stream.
+PROBLEM_PROGRESS_KIND = "problem_progress"
+
+# Where the runner puts the read-only evidence reader in the LangGraph run config.
+EVIDENCE_READER_KEY = "evidence_reader"
+
+
+def make_problem_extraction_node(skills: SkillRegistry):
+    """
+    Build the problem_extraction node, bound to a SkillRegistry.
+
+    The node only orchestrates:
+      1. look up the Problem Extraction skill by name in the registry,
+      2. give it the industry, branch and a READ-ONLY evidence reader
+         (passed in by the runner through the run config, never stored in state),
+      3. forward the skill's safe progress updates to LangGraph's stream,
+      4. give each problem option an id and put the result into the workflow state.
+
+    The runner saves the options to the Project Brain using the same ids, so the
+    selection step can check the student's choice against them.
+    """
+
+    async def problem_extraction_node(state: DiscoveryState, config: RunnableConfig) -> dict:
+        skill = skills.get(PROBLEM_SKILL_NAME)
+        reader = config.get("configurable", {}).get(EVIDENCE_READER_KEY)
+        if reader is None:
+            raise RuntimeError("problem_extraction needs an evidence reader in the run config.")
+        write = get_stream_writer()
+
+        async def forward_progress(progress: ProblemProgress) -> None:
+            write({"kind": PROBLEM_PROGRESS_KIND, "progress": progress.model_dump(mode="json")})
+
+        output = await skill.execute(
+            ProblemExtractionInput(
+                workspace_id=state["workspace_id"],
+                industry=state["industry"],
+                branch=state["branch"],
+            ),
+            evidence=reader,
+            on_progress=forward_progress,
+        )
+
+        return {
+            "problem_output": output.model_dump(mode="json"),
+            "problem_candidate_ids": [str(uuid.uuid4()) for _ in output.candidates],
+            "workflow_state": WorkflowState.PROBLEM_OPTIONS.value,
+        }
+
+    return problem_extraction_node
+
+
+def problem_selection_node(state: DiscoveryState) -> dict:
+    """
+    Pause and wait for the student to choose one problem (blueprint §15).
+
+    This is a mandatory HITL interrupt. The API resumes the graph with
+    Command(resume=<problem id>); the id must be one of the options.
+    """
+    options = state.get("problem_candidate_ids") or []
+
+    selected = interrupt({
+        "stage": WorkflowState.PROBLEM_OPTIONS.value,
+        "problem_candidate_ids": options,
+        "prompt": "Which problem do you want to build your FYP around?",
+    })
+
+    if selected not in options:
+        raise ValueError(f"'{selected}' is not one of this project's problem options.")
+
+    return {
+        "selected_problem_id": selected,
+        "workflow_state": WorkflowState.PROBLEM_SELECTED.value,
+    }

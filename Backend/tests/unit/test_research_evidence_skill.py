@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.brain.models import Base
 from app.core.brain.repository import WorkspaceBrainRepository
-from app.core.brain.schemas import EvidenceSource, EvidenceTier, ResearchCategory
+from app.core.brain.schemas import EvidenceSource, EvidenceTier, ResearchCategory, SourceType
 from app.core.skills.registry import SkillRegistry
 from app.core.tools.providers.mock_search import MockSearchProvider
 from app.core.tools.search import (
@@ -35,20 +35,27 @@ NAVY = ResearchEvidenceInput(workspace_id="ws-1", industry="Defense", branch="Na
 
 
 class FakeSearch(SearchProvider):
-    """Returns canned results per search focus and records every query it receives."""
+    """
+    Returns canned results per search focus (or per exact query text, which wins)
+    and records every query it receives.
+    """
 
     name = "fake"
 
     def __init__(self, results: dict[SearchFocus, list[SearchResult]] | None = None,
-                 fail_on: SearchFocus | None = None):
+                 fail_on: SearchFocus | None = None,
+                 by_text: dict[str, list[SearchResult]] | None = None):
         self.results = results or {}
         self.fail_on = fail_on
+        self.by_text = by_text or {}
         self.queries: list[SearchQuery] = []
 
     async def search(self, query: SearchQuery) -> list[SearchResult]:
         self.queries.append(query)
         if query.focus == self.fail_on:
             raise SearchProviderError("provider down")
+        if query.text in self.by_text:
+            return self.by_text[query.text][: query.max_results]
         return self.results.get(query.focus, [])[: query.max_results]
 
 
@@ -117,13 +124,18 @@ async def test_runs_the_research_plan_in_order():
     search = FakeSearch()
     output, _ = await run(ResearchEvidenceSkill(search))
 
+    # No startups discovered → no second-hop searches.
     assert [q.focus for q in search.queries] == [
-        SearchFocus.COMPANIES, SearchFocus.NEWS,      # organizations
-        SearchFocus.GOVERNMENT,                       # official sources
-        SearchFocus.RESEARCH,                         # research
+        SearchFocus.COMPANIES,                        # discover startups (directories)
+        SearchFocus.NEWS,                             # industry news
+        SearchFocus.GOVERNMENT, SearchFocus.GOVERNMENT,   # government
+        SearchFocus.RESEARCH,                         # research papers
         SearchFocus.DATASETS,                         # datasets
     ]
     assert all(q.text.startswith('"Navy" Defense') for q in search.queries)
+    assert "ycombinator.com" in search.queries[0].include_domains
+    assert "arxiv.org" in search.queries[4].include_domains
+    assert "kaggle.com" in search.queries[5].include_domains
     assert output.queries_run == [q.text for q in search.queries]
 
 
@@ -145,15 +157,19 @@ async def test_same_url_is_kept_only_once():
     assert output.sources[0].research_category == ResearchCategory.ORGANIZATIONS   # first finder wins
 
 
-async def test_each_category_keeps_only_its_strongest_sources():
-    # Organizations: 2 company pages (Tier A) + 2 news (B) + 2 blogs (C), cap 3 → the 2 A's and 1 B.
-    search = FakeSearch({
-        SearchFocus.COMPANIES: [page("blog.one.example"), page("www.co-a.example"), page("www.co-b.example")],
-        SearchFocus.NEWS: [page("blog.two.example"), page("www.reuters.com"), page("www.bbc.co.uk")],
+async def test_each_step_keeps_only_its_strongest_sources():
+    # The two government searches find a blog (C), a news story (B) and four
+    # government pages (A). With a cap of 3 per step, only three A's are kept.
+    search = FakeSearch(by_text={
+        '"Navy" Defense government initiative programme': [page("blog.one.example"), page("www.reuters.com"),
+                                                           page("a.agency.gov")],
+        '"Navy" Defense government report strategy': [page("b.agency.gov"), page("c.agency.gov"),
+                                                      page("d.agency.gov")],
     })
     output, _ = await run(ResearchEvidenceSkill(search), NAVY.model_copy(update={"max_sources_per_category": 3}))
 
-    assert [s.evidence_tier for s in output.sources] == [EvidenceTier.A, EvidenceTier.A, EvidenceTier.B]
+    assert [s.evidence_tier for s in output.sources] == [EvidenceTier.A] * 3
+    assert {s.research_category for s in output.sources} == {ResearchCategory.OFFICIAL_SOURCES}
 
 
 async def test_sources_are_returned_strongest_first():
@@ -176,17 +192,12 @@ async def test_sources_are_returned_strongest_first():
 async def test_progress_follows_the_research_steps():
     output, progress = await run(ResearchEvidenceSkill(MockSearchProvider()))
 
-    assert [(p.phase, p.category) for p in progress] == [
-        (ResearchPhase.SEARCHING_SOURCES, ResearchCategory.ORGANIZATIONS),
-        (ResearchPhase.SOURCES_FOUND, ResearchCategory.ORGANIZATIONS),
-        (ResearchPhase.SEARCHING_SOURCES, ResearchCategory.OFFICIAL_SOURCES),
-        (ResearchPhase.SOURCES_FOUND, ResearchCategory.OFFICIAL_SOURCES),
-        (ResearchPhase.SEARCHING_SOURCES, ResearchCategory.RESEARCH),
-        (ResearchPhase.SOURCES_FOUND, ResearchCategory.RESEARCH),
-        (ResearchPhase.SEARCHING_SOURCES, ResearchCategory.DATASETS),
-        (ResearchPhase.SOURCES_FOUND, ResearchCategory.DATASETS),
+    steps = ["discover_startups", "confirm_startups", "industry_news", "government", "research_papers", "datasets"]
+    assert [(p.phase, p.step) for p in progress] == [
+        *[(phase, step) for step in steps for phase in (ResearchPhase.SEARCHING_SOURCES, ResearchPhase.SOURCES_FOUND)],
         (ResearchPhase.EVALUATING_EVIDENCE, None),
     ]
+    assert progress[4].category == ResearchCategory.NEWS
     # Counts only ever grow, and end at the final totals.
     counts = [p.sources_found for p in progress]
     assert counts == sorted(counts)
@@ -197,10 +208,12 @@ async def test_progress_follows_the_research_steps():
 async def test_progress_labels_are_safe_activity_only():
     _, progress = await run(ResearchEvidenceSkill(MockSearchProvider()))
     assert {p.label for p in progress} == {
-        "Identifying relevant organizations",
-        "Reviewing authoritative sources",
-        "Checking research",
-        "Checking datasets",
+        "Discovering startups",
+        "Confirming on startup websites",
+        "Reading industry news",
+        "Reviewing government evidence",
+        "Checking research papers",
+        "Finding public datasets",
         "Evaluating evidence quality",
     }
 
@@ -279,3 +292,84 @@ def test_registering_twice_is_rejected():
     register_fyp_skills(registry, MockSearchProvider())
     with pytest.raises(ValueError, match="already registered"):
         register_fyp_skills(registry, MockSearchProvider())
+
+
+# ── Second hop: startups confirmed on their own websites (Release 0.4) ───────
+
+def listing(title: str, host: str = "www.ycombinator.com") -> SearchResult:
+    return SearchResult(title=title, url=f"https://{host}/companies/{abs(hash(title))}",
+                        snippet="Startup profile. Builds maritime AI.", publisher="Y Combinator")
+
+
+def site(host: str, title: str = "Home") -> SearchResult:
+    return SearchResult(title=title, url=f"https://{host}/", snippet="We detect unusual vessels. Trusted by ports.",
+                        publisher=None)
+
+
+async def test_startups_found_in_directories_are_confirmed_on_their_own_sites():
+    search = FakeSearch(
+        {SearchFocus.COMPANIES: [listing("Harbor AI: AI for ship monitoring | Y Combinator"),
+                                 listing("Top 10 maritime startups in 2026 | StartupBlink", "www.startupblink.com"),
+                                 listing("SeaSense - Crunchbase Company Profile", "www.crunchbase.com")]},
+        by_text={
+            '"Harbor AI" Navy': [site("www.crunchbase.com", "Harbor AI profile"), site("harbor-ai.com", "Harbor AI")],
+            '"SeaSense" Navy': [site("www.reuters.com", "SeaSense raises"), site("unrelated.com")],
+        },
+    )
+    output, _ = await run(ResearchEvidenceSkill(search))
+
+    confirm_texts = [q.text for q in search.queries if q.text.startswith('"Harbor') or q.text.startswith('"SeaSense')]
+    assert confirm_texts == ['"Harbor AI" Navy', '"SeaSense" Navy']           # the list title was skipped
+    official = [s for s in output.sources if s.url == "https://harbor-ai.com/"]
+    assert len(official) == 1
+    assert (official[0].source_type, official[0].evidence_tier) == (SourceType.STARTUP, EvidenceTier.A)
+    assert official[0].research_category == ResearchCategory.ORGANIZATIONS
+    # SeaSense had no site of its own in the results, so nothing was marked official for it.
+    assert not any("unrelated.com" in s.url for s in output.sources)
+    # The directory listings themselves stay discovery evidence.
+    assert {s.evidence_tier for s in output.sources if "ycombinator" in s.url} == {EvidenceTier.C}
+
+
+async def test_research_never_exceeds_the_search_budget():
+    names = [listing(f"Startup{i} | Y Combinator") for i in range(8)]
+    search = FakeSearch({SearchFocus.COMPANIES: names})
+
+    await run(ResearchEvidenceSkill(search, max_searches=9), NAVY.model_copy(update={"max_sources_per_category": 10}))
+
+    assert len(search.queries) == 9
+    # The second hop only used what was left after keeping room for the later steps (5 searches).
+    focuses = [q.focus for q in search.queries]
+    assert focuses[-5:] == [SearchFocus.NEWS, SearchFocus.GOVERNMENT, SearchFocus.GOVERNMENT,
+                            SearchFocus.RESEARCH, SearchFocus.DATASETS]
+    assert sum(1 for q in search.queries if q.text.startswith('"Startup')) == 3
+
+
+async def test_at_most_five_startups_are_confirmed():
+    names = [listing(f"Startup{i} | Y Combinator") for i in range(8)]
+    search = FakeSearch({SearchFocus.COMPANIES: names})
+    await run(ResearchEvidenceSkill(search), NAVY.model_copy(update={"max_sources_per_category": 10}))
+    assert sum(1 for q in search.queries if q.text.startswith('"Startup')) == 5
+
+
+async def test_a_tiny_budget_stops_research_quietly():
+    search = FakeSearch()
+    output, _ = await run(ResearchEvidenceSkill(search, max_searches=2))
+    assert len(search.queries) == 2
+    assert output.queries_run == [q.text for q in search.queries]
+
+
+
+async def test_summary_counts_confirmed_startups():
+    search = FakeSearch(
+        {SearchFocus.COMPANIES: [listing("Harbor AI | Y Combinator"), listing("SeaSense | F6S", "www.f6s.com")]},
+        by_text={'"Harbor AI" Navy': [site("harbor-ai.com")], '"SeaSense" Navy': [site("seasense.io")]},
+    )
+    output, _ = await run(ResearchEvidenceSkill(search))
+    assert output.summary.startups_confirmed == 2
+    assert output.summary.by_category[ResearchCategory.ORGANIZATIONS] == 4   # 2 listings + 2 own sites
+
+
+async def test_mock_research_confirms_at_least_one_sample_startup():
+    output, _ = await run(ResearchEvidenceSkill(MockSearchProvider()))
+    assert output.summary.startups_confirmed >= 1
+    assert output.summary.by_category[ResearchCategory.NEWS] > 0

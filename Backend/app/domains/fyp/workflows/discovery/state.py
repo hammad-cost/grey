@@ -20,9 +20,17 @@ class DiscoveryState(TypedDict, total=False):
     branch          — the branch the student has chosen (or None).
     research_output — the Evidence Research skill's result, as plain JSON data,
                       until the research runner saves it to the Project Brain.
+    problem_output  — the Problem Extraction skill's result, as plain JSON data,
+                      until the problem runner saves it (Release 0.3).
+    problem_candidate_ids — the ids given to those problem options; the same ids
+                      are used in the Project Brain, so a selection can be checked.
+    selected_problem_id — the option the student chose.
     """
     workspace_id: str
     workflow_state: str
     industry: str | None
     branch: str | None
     research_output: dict | None
+    problem_output: dict | None
+    problem_candidate_ids: list[str]
+    selected_problem_id: str | None

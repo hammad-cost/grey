@@ -1,7 +1,7 @@
 """
 Projects API routes.
 
-These are the four endpoints for Release 0.1.
+These are the four discovery endpoints (research routes live in research.py).
 Rules:
   - Routes stay thin. No business logic lives here.
   - Routes call the WorkspaceBrainRepository (persistence) and the
@@ -153,9 +153,10 @@ async def select_branch(
     1. Confirms the project exists and an industry is already chosen.
     2. Validates the branch against the chosen industry.
     3. Resumes the workflow — graph validates the choice, transitions to
-       EVIDENCE_RESEARCH, and the graph ends.
+       EVIDENCE_RESEARCH, and pauses before research runs.
     4. Persists the decision and final state to the Project Brain.
-    5. Returns a GreyEvent marking Release 0.1 as complete.
+    5. Returns a GreyEvent offering the startResearch action
+       (research itself runs via POST /projects/{id}/research).
     """
     # 1. Confirm project exists and has an industry
     repo = WorkspaceBrainRepository(session)
@@ -180,7 +181,7 @@ async def select_branch(
                    f"Valid options: {branches}",
         )
 
-    # 3. Resume workflow (branch_selection → evidence_research → END)
+    # 3. Resume workflow (branch_selection → pauses before evidence_research)
     config = {"configurable": {"thread_id": workspace_id}}
     await graph.ainvoke(Command(resume=body.branch), config=config)
 
@@ -190,24 +191,24 @@ async def select_branch(
         workspace_id, WorkflowState.EVIDENCE_RESEARCH
     )
 
-    # 5. Respond with event — Release 0.1 stops here
+    # 5. Respond with event — the frontend now starts research
     return build_event(
         type=EventType.BRANCH_SAVED,
         workspace_id=workspace_id,
         workflow="discovery",
         stage=WorkflowState.EVIDENCE_RESEARCH.value,
-        status=EventStatus.COMPLETE,
+        status=EventStatus.AWAITING_USER,
         data={
             "industry": final_snapshot.industry,
             "branch": body.branch,
-            "message": "Grey is ready to research evidence. (Release 0.1 stops here.)",
+            "message": "Grey is ready to research evidence.",
         },
         brain_patch={
             "branch": body.branch,
             "branch_status": "approved",
             "workflow_state": WorkflowState.EVIDENCE_RESEARCH.value,
         },
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.START_RESEARCH],
     )
 
 

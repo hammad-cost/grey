@@ -29,6 +29,10 @@ export type WorkspaceBrainSummary = {
   branch?: string;
   branchStatus?: string;
   workflowState?: string;
+  /** Evidence research (Release 0.2): "running" | "complete" | "failed". */
+  researchStatus?: string;
+  evidenceCount?: number;
+  highQualityEvidenceCount?: number;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -48,6 +52,7 @@ export type GreyUIState = {
   currentWorkflow: string;
   currentStage: string;
   status: WorkflowStatus;
+  /** Progress of a long-running step such as evidence research. */
   progress?: { label: string; completed: number; total: number };
   currentComponent?: string;
   allowedActions: string[];
@@ -90,6 +95,7 @@ export const Actions = {
   START_PROJECT: "startProject",
   SELECT_INDUSTRY: "selectIndustry",
   SELECT_BRANCH: "selectBranch",
+  START_RESEARCH: "startResearch",
   SELECT_PROBLEM: "selectProblem",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",

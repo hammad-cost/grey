@@ -9,59 +9,11 @@ This means:
   - Each test is fully isolated — no data leaks between tests.
   - The full stack is exercised: route → workflow → repository → database.
 """
-import pytest
-from httpx import ASGITransport, AsyncClient
-from langgraph.checkpoint.memory import MemorySaver
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from httpx import AsyncClient
 
-from app.api.projects import get_discovery_graph
-from app.core.brain.database import get_session
-from app.core.brain.models import Base
 from app.core.brain.schemas import WorkflowState
-from app.domains.fyp.workflows.discovery import build_discovery_graph
-from main import app
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
-
-@pytest.fixture
-async def client():
-    """
-    Provide an HTTP test client wired to:
-      - an in-memory SQLite database (fresh per test)
-      - a fresh LangGraph MemorySaver (fresh per test)
-
-    FastAPI dependency_overrides let us swap real dependencies for test ones.
-    """
-    # --- In-memory database setup ---
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    factory = async_sessionmaker(bind=engine, expire_on_commit=False)
-
-    async def override_get_session():
-        async with factory() as session:
-            yield session
-
-    # --- Fresh workflow graph ---
-    test_graph = build_discovery_graph(MemorySaver())
-
-    def override_get_graph():
-        return test_graph
-
-    # --- Apply overrides ---
-    app.dependency_overrides[get_session] = override_get_session
-    app.dependency_overrides[get_discovery_graph] = override_get_graph
-
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test",
-    ) as c:
-        yield c
-
-    # --- Teardown ---
-    app.dependency_overrides.clear()
-    await engine.dispose()
+# The `client` fixture lives in conftest.py (shared with test_research_api.py).
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
@@ -233,7 +185,9 @@ async def test_select_branch_returns_evidence_research_event(client: AsyncClient
 
     assert data["type"] == "branch_saved"
     assert data["stage"] == WorkflowState.EVIDENCE_RESEARCH.value
-    assert data["status"] == "complete"
+    assert data["status"] == "awaiting_user"
+    # Release 0.2: the student can now start evidence research.
+    assert data["allowed_actions"] == ["startResearch"]
 
 
 async def test_select_branch_persists_to_brain(client: AsyncClient):
@@ -342,7 +296,7 @@ async def test_full_release_01_journey(client: AsyncClient):
     )
     assert resp.status_code == 200
     assert resp.json()["stage"] == "EVIDENCE_RESEARCH"
-    assert resp.json()["status"] == "complete"
+    assert resp.json()["allowed_actions"] == ["startResearch"]
 
     # 4. Read the final Project Brain state
     resp = await client.get(f"/projects/{workspace_id}")

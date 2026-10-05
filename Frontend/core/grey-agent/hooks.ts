@@ -13,6 +13,7 @@
 
 import { useCallback } from "react";
 import { useGreyContext } from "./context";
+import { readEventStream } from "./stream";
 import type { GreyEvent, GreyUIState } from "./types";
 
 // ── API helper ─────────────────────────────────────────────────────────────────
@@ -30,16 +31,22 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(
-      (body as { detail?: string }).detail ??
-        `Request failed: ${response.status} ${response.statusText}`
-    );
-  }
+  if (!response.ok) throw await errorFromResponse(response);
 
   return response.json() as Promise<T>;
 }
+
+/** Turn a failed response into an Error with the backend's message, if any. */
+async function errorFromResponse(response: Response): Promise<Error> {
+  const body = await response.json().catch(() => ({}));
+  return new Error(
+    (body as { detail?: string }).detail ??
+      `Request failed: ${response.status} ${response.statusText}`
+  );
+}
+
+/** Research ends with exactly one of these events. */
+const RESEARCH_END_EVENTS = ["research_completed", "research_failed"];
 
 // ── Public hooks ───────────────────────────────────────────────────────────────
 
@@ -136,5 +143,32 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  return { startProject, selectIndustry, selectBranch };
+  /**
+   * Run evidence research for the chosen industry and branch.
+   *
+   * The backend streams progress events while it researches; each one is
+   * applied as soon as it arrives, so the progress card updates live.
+   * Resolves with the final event (research_completed or research_failed).
+   */
+  const startResearch = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        const response = await fetch(
+          `${BACKEND_URL}/projects/${state.workspaceId}/research`,
+          { method: "POST" }
+        );
+        if (!response.ok) throw await errorFromResponse(response);
+        if (!response.body) throw new Error("Research did not start. Please try again.");
+
+        const lastEvent = await readEventStream(response.body, applyEvent);
+        if (!lastEvent || !RESEARCH_END_EVENTS.includes(lastEvent.type)) {
+          throw new Error("The connection to Grey was lost during research. Please try again.");
+        }
+        return lastEvent;
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  return { startProject, selectIndustry, selectBranch, startResearch };
 }

@@ -3,16 +3,17 @@
 /**
  * Home page — FYP journey entry point.
  *
- * Release 0.1 renders:
- *   idle            → Welcome screen with "Start FYP" button
+ * Renders one step of the journey at a time:
+ *   idle               → Welcome screen with "Start FYP" button
  *   INDUSTRY_SELECTION → IndustrySelector cards
  *   BRANCH_SELECTION   → BranchSelector cards
- *   EVIDENCE_RESEARCH  → Journey complete message
+ *   EVIDENCE_RESEARCH  → ResearchProgressCard (start, live progress, summary)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
 import { IndustrySelector } from "@/domains/fyp/components/IndustrySelector";
+import { ResearchProgressCard } from "@/domains/fyp/components/ResearchProgressCard";
 
 export default function Home() {
   const state = useGreyUIState();
@@ -46,8 +47,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Loading spinner ─────────────────────────────────────────────── */}
-        {isLoading && (
+        {/* ── Loading spinner (research shows its own progress instead) ───── */}
+        {isLoading && state.currentStage !== "EVIDENCE_RESEARCH" && (
           <div className="flex items-center gap-2 text-sm text-gray-400 mt-4">
             <span className="animate-spin">⟳</span>
             <span>Grey is thinking…</span>
@@ -71,27 +72,8 @@ export default function Home() {
           <BranchSelector />
         )}
 
-        {/* ── EVIDENCE_RESEARCH — Release 0.1 complete ───────────────────── */}
-        {state.currentStage === "EVIDENCE_RESEARCH" && (
-          <div className="rounded-xl border border-green-200 bg-green-50 p-6">
-            <p className="text-xs uppercase tracking-wide text-green-600 mb-1">
-              Release 0.1 complete
-            </p>
-            <h2 className="text-lg font-semibold text-gray-900">
-              Grey is ready to research evidence.
-            </h2>
-            <p className="mt-2 text-sm text-gray-600">
-              Industry:{" "}
-              <strong>{state.brainSummary?.industry}</strong>
-              {" · "}
-              Branch:{" "}
-              <strong>{state.brainSummary?.branch}</strong>
-            </p>
-            <p className="mt-3 text-sm text-gray-400">
-              Evidence research will begin in a future release.
-            </p>
-          </div>
-        )}
+        {/* ── EVIDENCE_RESEARCH ──────────────────────────────────────────── */}
+        <ResearchProgressCard />
 
       </div>
 

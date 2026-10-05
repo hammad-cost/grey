@@ -35,6 +35,15 @@ async def get_session() -> AsyncSession:
         yield session
 
 
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """
+    Provide the session factory itself (not an open session).
+    Used by streaming routes: they open a session that stays open while the
+    stream is sent, because get_session() closes before streaming starts.
+    """
+    return AsyncSessionLocal
+
+
 async def create_all_tables() -> None:
     """
     Create all database tables if they do not already exist.

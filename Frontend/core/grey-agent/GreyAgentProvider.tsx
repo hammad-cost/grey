@@ -27,19 +27,45 @@ import { INITIAL_GREY_STATE } from "./types";
  * Only keys present in the patch are returned, so unchanged fields are kept.
  */
 function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
-  const keyMap: Record<string, keyof WorkspaceBrainSummary> = {
+  const textKeys = {
     industry: "industry",
     industry_status: "industryStatus",
     branch: "branch",
     branch_status: "branchStatus",
     workflow_state: "workflowState",
-  };
+    research_status: "researchStatus",
+  } as const;
+  const numberKeys = {
+    evidence_count: "evidenceCount",
+    high_quality_evidence_count: "highQualityEvidenceCount",
+  } as const;
+
   const summary: WorkspaceBrainSummary = {};
-  for (const [backendKey, uiKey] of Object.entries(keyMap)) {
+  for (const [backendKey, uiKey] of Object.entries(textKeys)) {
     const value = patch[backendKey];
     if (typeof value === "string") summary[uiKey] = value;
   }
+  for (const [backendKey, uiKey] of Object.entries(numberKeys)) {
+    const value = patch[backendKey];
+    if (typeof value === "number") summary[uiKey] = value;
+  }
   return summary;
+}
+
+/**
+ * Research events carry a checklist summary (label, completed_steps, total_steps).
+ * Turn it into GreyUIState.progress. Other events have no progress.
+ */
+function toProgress(data: Record<string, unknown>): GreyUIState["progress"] {
+  const { label, completed_steps, total_steps } = data;
+  if (
+    typeof label === "string" &&
+    typeof completed_steps === "number" &&
+    typeof total_steps === "number"
+  ) {
+    return { label, completed: completed_steps, total: total_steps };
+  }
+  return undefined;
 }
 
 interface GreyAgentProviderProps {
@@ -65,6 +91,7 @@ export function GreyAgentProvider({ children }: GreyAgentProviderProps) {
       status: event.status,
       allowedActions: event.allowed_actions,
       eventData: event.data,
+      progress: toProgress(event.data),
       brainSummary: {
         ...prev.brainSummary,
         // brain_patch contains only the fields that changed — merge them in.

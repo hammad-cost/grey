@@ -4,8 +4,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.projects import router as projects_router
+from app.api.research import router as research_router
 from app.core.brain.database import create_all_tables
 from app.core.config import settings
+from app.core.skills.registry import skill_registry
+from app.core.tools import get_search_provider
+from app.domains.fyp.skills import register_fyp_skills
+
+
+def register_skills() -> None:
+    """
+    Put every skill into the shared skill registry, giving each one the tools
+    configured in .env (e.g. SEARCH_PROVIDER). Safe to call more than once.
+    """
+    if "research_evidence" not in skill_registry:
+        register_fyp_skills(skill_registry, get_search_provider(settings))
 
 
 @asynccontextmanager
@@ -15,12 +28,13 @@ async def lifespan(app: FastAPI):
     The code before 'yield' runs on startup; after 'yield' on shutdown.
     """
     await create_all_tables()
+    register_skills()
     yield
 
 
 app = FastAPI(
     title="Grey API",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -33,6 +47,7 @@ app.add_middleware(
 )
 
 app.include_router(projects_router)
+app.include_router(research_router)
 
 
 @app.get("/health")

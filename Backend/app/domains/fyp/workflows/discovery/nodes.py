@@ -10,9 +10,15 @@ Rules:
   - Nodes validate decisions and control state transitions.
   - Nodes pause at mandatory HITL points using interrupt().
 """
+from langgraph.config import get_stream_writer
 from langgraph.types import interrupt
 
 from app.core.brain.schemas import WorkflowState
+from app.core.skills.registry import SkillRegistry
+from app.domains.fyp.skills.research_evidence.schemas import (
+    ResearchEvidenceInput,
+    ResearchProgress,
+)
 from app.domains.fyp.workflows.discovery.state import DiscoveryState
 from app.domains.fyp.workflows.discovery.taxonomy import (
     INDUSTRIES,
@@ -83,13 +89,51 @@ def branch_selection_node(state: DiscoveryState) -> dict:
     }
 
 
-def evidence_research_node(state: DiscoveryState) -> dict:
-    """
-    Mark the project as having entered EVIDENCE_RESEARCH and stop.
+# The name the Evidence Research skill is registered under in the SkillRegistry.
+RESEARCH_SKILL_NAME = "research_evidence"
 
-    Release 0.1: this node does nothing except confirm the transition.
-    Real evidence research (ResearchEvidenceSkill) is added in a future slice.
+# Marks a progress update sent through LangGraph's custom stream, so the
+# research runner can tell it apart from anything else on that stream.
+RESEARCH_PROGRESS_KIND = "research_progress"
+
+
+def make_evidence_research_node(skills: SkillRegistry):
     """
-    return {
-        "workflow_state": WorkflowState.EVIDENCE_RESEARCH.value,
-    }
+    Build the evidence_research node, bound to a SkillRegistry.
+
+    The node only orchestrates:
+      1. look up the Evidence Research skill by name in the registry,
+      2. give it the industry and branch from the workflow state,
+      3. forward the skill's safe progress updates to LangGraph's stream,
+      4. put the skill's result into the workflow state.
+
+    All research logic lives in the skill. The node never creates the skill,
+    and never saves anything — the research runner saves the result to the
+    Project Brain.
+
+    If the skill fails, the error propagates and the graph stays paused before
+    this node, so running the graph again retries the research.
+    """
+
+    async def evidence_research_node(state: DiscoveryState) -> dict:
+        skill = skills.get(RESEARCH_SKILL_NAME)
+        write = get_stream_writer()
+
+        async def forward_progress(progress: ResearchProgress) -> None:
+            write({"kind": RESEARCH_PROGRESS_KIND, "progress": progress.model_dump(mode="json")})
+
+        output = await skill.execute(
+            ResearchEvidenceInput(
+                workspace_id=state["workspace_id"],
+                industry=state["industry"],
+                branch=state["branch"],
+            ),
+            on_progress=forward_progress,
+        )
+
+        return {
+            "research_output": output.model_dump(mode="json"),
+            "workflow_state": WorkflowState.EVIDENCE_RESEARCH.value,
+        }
+
+    return evidence_research_node

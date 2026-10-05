@@ -1,11 +1,33 @@
 # Grey — Current State
 
-**Release:** 0.1 (complete)
+**Release:** 0.1 complete (commit `9a025a1`) · 0.2 in progress — Steps 1–4 of 8 done and committed (WIP commit)
 **Last updated:** 2026-10-05
 **Scope:** FYP Companion, Discovery workflow up to `EVIDENCE_RESEARCH`
 
 This file records exactly what is implemented today — no more, no less.
 For the planned product, see `docs/specs/`. For how the pieces fit together, see `docs/architecture.md`.
+For the quick recovery checkpoint (current step, next action), see `docs/resume.md`.
+
+---
+
+## 0. Release 0.2 (Evidence Research) — in progress
+
+**Backend only so far. A student cannot trigger research from the app yet** — the API route and startup wiring come in Step 5.
+
+| Step | Built | Location (`Backend/`) |
+|---|---|---|
+| 1 | Project Brain storage: `research_run` and `evidence_source` tables; repository methods `start_research_run`, `complete_research_run`, `fail_research_run`, `list_evidence`, `get_latest_research_run`; snapshot includes latest `research` run | `app/core/brain/` |
+| 2 | Provider-independent search tool (`SearchProvider`, `SearchQuery`, `SearchResult`, `SearchFocus`), `MockSearchProvider` (reserved `.example` URLs), `get_search_provider`; settings `SEARCH_PROVIDER=mock`, `MOCK_SEARCH_DELAY_MS=400` | `app/core/tools/`, `app/core/config/settings.py` |
+| 3 | `ResearchEvidenceSkill`: 5 searches over 4 categories, rule-based source type + Tier A/B/C, all blueprint evidence fields, de-dup, max 5 per category, strongest first; `register_fyp_skills()` | `app/domains/fyp/skills/` |
+| 4 | Workflow: graph pauses before `evidence_research`; node calls the skill via the Skill Registry; `start_evidence_research()` runner streams `research_started → searching_sources/sources_found ×4 → evaluating_evidence → storing_evidence → research_completed` (or `research_failed`); rebuilds workflow position from the Brain after a restart; replaces runs orphaned by a stopped server | `app/domains/fyp/workflows/discovery/` |
+
+**Tests:** 237 backend passing (74 from 0.1 + 163 new). Frontend unchanged (15 passing).
+
+**Behaviour changes vs 0.1 already in the code:**
+- After branch selection the Discovery graph now **pauses before** `evidence_research` instead of ending.
+- `EventType` values `research_progress` / `research_complete` were replaced by the 0.2 names above.
+
+**Not yet done:** API route + evidence route + skill registration at startup (Step 5), frontend (Steps 6–7), docs `feature-map.md` / `architecture.md` for 0.2 (Step 8).
 
 ---
 

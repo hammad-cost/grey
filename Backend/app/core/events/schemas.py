@@ -17,7 +17,7 @@ from pydantic import BaseModel
 class EventType(str, Enum):
     """
     All named events the backend can emit.
-    Release 0.1 uses the first four.
+    Release 0.1 uses the first four; Release 0.2 adds the research events.
     The rest are defined now so the frontend contract is stable from the start.
     """
     # Release 0.1
@@ -26,10 +26,17 @@ class EventType(str, Enum):
     INDUSTRY_SAVED = "industry_saved"
     BRANCH_SAVED = "branch_saved"
 
-    # Future — defined here so event names are never magic strings
+    # Release 0.2 — evidence research, in the order the student sees them.
+    # These only describe safe activity (what Grey is doing), never reasoning.
     RESEARCH_STARTED = "research_started"
-    RESEARCH_PROGRESS = "research_progress"
-    RESEARCH_COMPLETE = "research_complete"
+    SEARCHING_SOURCES = "searching_sources"
+    SOURCES_FOUND = "sources_found"
+    EVALUATING_EVIDENCE = "evaluating_evidence"
+    STORING_EVIDENCE = "storing_evidence"
+    RESEARCH_COMPLETED = "research_completed"
+    RESEARCH_FAILED = "research_failed"
+
+    # Future — defined here so event names are never magic strings
     PROBLEM_OPTIONS_READY = "problem_options_ready"
     HUMAN_INPUT_REQUIRED = "human_input_required"
     FYP_DIRECTION_READY = "fyp_direction_ready"
@@ -64,6 +71,7 @@ class AllowedAction(str, Enum):
     START_PROJECT = "startProject"
     SELECT_INDUSTRY = "selectIndustry"
     SELECT_BRANCH = "selectBranch"
+    START_RESEARCH = "startResearch"       # run (or retry) evidence research
     SELECT_PROBLEM = "selectProblem"
     REQUEST_MORE_PROBLEMS = "requestMoreProblems"
     APPROVE_FYP_DIRECTION = "approveFYPDirection"

@@ -203,14 +203,15 @@ async def test_full_release_01_journey():
     assert result["industry"] == "Healthcare"
     assert result["workflow_state"] == WorkflowState.BRANCH_SELECTION.value
 
-    # 3. Student selects branch — graph completes
+    # 3. Student selects branch — workflow reaches EVIDENCE_RESEARCH
     result = await graph.ainvoke(Command(resume="Medical Imaging"), config=config)
     assert result["branch"] == "Medical Imaging"
     assert result["workflow_state"] == WorkflowState.EVIDENCE_RESEARCH.value
 
-    # 4. Confirm graph has no more nodes to run (it ended)
+    # 4. Release 0.2: the graph pauses just before research instead of ending,
+    #    so research can run as its own streamed step (see test_research_workflow.py).
     final_state = graph.get_state(config)
-    assert final_state.next == ()
+    assert final_state.next == ("evidence_research",)
 
 
 async def test_different_workspace_ids_are_isolated():

@@ -1,14 +1,18 @@
 """
-ORM model for the Workspace Brain.
+ORM models for the Workspace Brain.
 
-One row per student project. Stores the authoritative state of a student's
-FYP journey. Chat history and LangGraph runtime state are NOT stored here —
-only decisions that have been made and accepted.
+workspace_brain — one row per student project: decisions and workflow position.
+research_run    — one row per evidence-research attempt.
+evidence_source — one row per piece of evidence found.
+
+Together they are the authoritative state of a student's FYP journey.
+Chat history and LangGraph runtime state are NOT stored here —
+only decisions and evidence that have been accepted.
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -54,3 +58,71 @@ class WorkspaceBrainRecord(Base):
     # ── Timestamps ────────────────────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class ResearchRunRecord(Base):
+    """
+    One attempt at evidence research for a project.
+
+    A project can have several runs over time (e.g. a failed run, then a retry).
+    Only one run per project may be "running" at a time.
+    """
+
+    __tablename__ = "research_run"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+
+    # Values match ResearchStatus enum in schemas.py: running / complete / failed
+    status: Mapped[str] = mapped_column(String)
+    provider: Mapped[str] = mapped_column(String)          # e.g. "mock"
+
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Filled in when the run completes
+    sources_found: Mapped[int] = mapped_column(Integer, default=0)
+    high_quality_count: Mapped[int] = mapped_column(Integer, default=0)   # Tier A sources
+
+    # Filled in when the run fails
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class EvidenceSourceRecord(Base):
+    """
+    One piece of evidence found during research.
+
+    Stores every field the product blueprint requires for evidence
+    transparency (§10) plus its quality tier (§11).
+    A project never stores the same URL twice.
+    """
+
+    __tablename__ = "evidence_source"
+    __table_args__ = (UniqueConstraint("workspace_id", "url", name="uq_evidence_workspace_url"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    research_run_id: Mapped[str] = mapped_column(String, ForeignKey("research_run.id"), index=True)
+
+    # ── What the source is ────────────────────────────────────────────────────
+    title: Mapped[str] = mapped_column(Text)
+    organization: Mapped[str] = mapped_column(Text)
+    source_type: Mapped[str] = mapped_column(String)        # SourceType enum value
+    published_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    url: Mapped[str] = mapped_column(Text)
+
+    # ── Why it matters for the student ────────────────────────────────────────
+    problem_addressed: Mapped[str] = mapped_column(Text)
+    relevant_insight: Mapped[str] = mapped_column(Text)
+    why_it_matters: Mapped[str] = mapped_column(Text)
+
+    # ── Quality and origin ────────────────────────────────────────────────────
+    evidence_tier: Mapped[str] = mapped_column(String)      # "A" / "B" / "C"
+    research_category: Mapped[str] = mapped_column(String)  # ResearchCategory enum value
+    query: Mapped[str] = mapped_column(Text)                # the search that found it
+    provider: Mapped[str] = mapped_column(String)           # e.g. "mock"
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

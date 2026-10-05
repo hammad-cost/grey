@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # The Next.js frontend runs on http://localhost:3000 during development.
     cors_origins: str = "http://localhost:3000"
 
+    # ── Search tool ───────────────────────────────────────────────────────────
+    # Which search provider evidence research uses. Release 0.2 supports "mock" only.
+    search_provider: str = "mock"
+    # Pause (milliseconds) per mock search, so research progress is visible in the UI.
+    mock_search_delay_ms: int = 400
+
     @property
     def cors_origin_list(self) -> list[str]:
         """cors_origins split into a clean list, e.g. ["http://localhost:3000"]."""

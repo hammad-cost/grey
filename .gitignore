@@ -1,0 +1,33 @@
+# ── Secrets / local environment ─────────────────────────────────────────────
+# Real env files stay on your machine. The *.example templates are committed.
+.env
+.env.local
+.env.*.local
+
+# ── Local databases ─────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Python ──────────────────────────────────────────────────────────────────
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# ── Node / Next.js ──────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# ── Old reference documents (kept locally, not in git) ──────────────────────
+# The authoritative specifications are the files under docs/.
+info/
+
+# ── OS / Office temp files ──────────────────────────────────────────────────
+.DS_Store
+Desktop.ini
+~$*

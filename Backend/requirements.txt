@@ -1,0 +1,15 @@
+fastapi==0.115.6
+uvicorn==0.32.1
+pydantic-settings==2.7.0
+
+# workflow
+langgraph==1.2.12
+
+# database
+sqlalchemy[asyncio]==2.0.36
+aiosqlite==0.20.0
+
+# testing
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1

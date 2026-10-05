@@ -1,0 +1,133 @@
+"""
+Grey event envelope.
+
+Every response from the backend to the frontend uses this shape.
+The frontend reads `type`, `stage`, `status`, and `allowed_actions`
+to decide which UI component to show and which buttons to enable.
+
+This envelope is the stable contract between backend and frontend —
+it must not change shape even as the backend evolves internally.
+"""
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel
+
+
+class EventType(str, Enum):
+    """
+    All named events the backend can emit.
+    Release 0.1 uses the first four.
+    The rest are defined now so the frontend contract is stable from the start.
+    """
+    # Release 0.1
+    PROJECT_CREATED = "project_created"
+    STAGE_CHANGED = "stage_changed"
+    INDUSTRY_SAVED = "industry_saved"
+    BRANCH_SAVED = "branch_saved"
+
+    # Future — defined here so event names are never magic strings
+    RESEARCH_STARTED = "research_started"
+    RESEARCH_PROGRESS = "research_progress"
+    RESEARCH_COMPLETE = "research_complete"
+    PROBLEM_OPTIONS_READY = "problem_options_ready"
+    HUMAN_INPUT_REQUIRED = "human_input_required"
+    FYP_DIRECTION_READY = "fyp_direction_ready"
+    DATASET_OPTIONS_READY = "dataset_options_ready"
+    ARCHITECTURE_READY = "architecture_ready"
+    FEASIBILITY_READY = "feasibility_ready"
+    SUPERVISOR_READINESS_READY = "supervisor_readiness_ready"
+    PROPOSAL_READY = "proposal_ready"
+    BRAIN_UPDATED = "brain_updated"
+    CHANGE_IMPACT_READY = "change_impact_ready"
+    ERROR = "error"
+
+
+class EventStatus(str, Enum):
+    """
+    What the workflow is doing right now.
+    The frontend uses this to show spinners, enable buttons, or lock the UI.
+    """
+    IDLE = "idle"
+    RUNNING = "running"
+    AWAITING_USER = "awaiting_user"   # Grey is paused, waiting for the student to act
+    BLOCKED = "blocked"
+    COMPLETE = "complete"
+
+
+class AllowedAction(str, Enum):
+    """
+    Actions the frontend is permitted to call at a given moment.
+    The backend includes only the currently valid actions in each event.
+    This prevents the student from skipping steps.
+    """
+    START_PROJECT = "startProject"
+    SELECT_INDUSTRY = "selectIndustry"
+    SELECT_BRANCH = "selectBranch"
+    SELECT_PROBLEM = "selectProblem"
+    REQUEST_MORE_PROBLEMS = "requestMoreProblems"
+    APPROVE_FYP_DIRECTION = "approveFYPDirection"
+    MODIFY_SCOPE = "modifyScope"
+    SELECT_DATASET = "selectDataset"
+    REQUEST_DATASET_ALTERNATIVE = "requestDatasetAlternative"
+    APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"
+    GO_BACK = "goBack"
+    ASK_GREY = "askGrey"
+    GENERATE_PROPOSAL = "generateProposal"
+
+
+class GreyEvent(BaseModel):
+    """
+    The envelope that wraps every backend-to-frontend message.
+
+    Example:
+        {
+            "type": "industry_saved",
+            "workspace_id": "ws-abc",
+            "domain": "fyp",
+            "workflow": "discovery",
+            "stage": "BRANCH_SELECTION",
+            "status": "awaiting_user",
+            "data": {"industry": "Defense"},
+            "brain_patch": {"industry": "Defense", "industry_status": "approved"},
+            "allowed_actions": ["selectBranch", "askGrey"]
+        }
+    """
+    type: EventType
+    workspace_id: str
+    domain: str = "fyp"
+    workflow: str
+    stage: str                              # current WorkflowState value
+    status: EventStatus
+    data: dict[str, Any] = {}              # event-specific payload
+    brain_patch: dict[str, Any] = {}       # Project Brain fields that just changed
+    allowed_actions: list[AllowedAction] = []
+
+
+def build_event(
+    *,
+    type: EventType,
+    workspace_id: str,
+    workflow: str,
+    stage: str,
+    status: EventStatus,
+    data: dict[str, Any] | None = None,
+    brain_patch: dict[str, Any] | None = None,
+    allowed_actions: list[AllowedAction] | None = None,
+    domain: str = "fyp",
+) -> GreyEvent:
+    """
+    Convenience function for constructing a GreyEvent.
+    Avoids repeating default values at every call site.
+    """
+    return GreyEvent(
+        type=type,
+        workspace_id=workspace_id,
+        domain=domain,
+        workflow=workflow,
+        stage=stage,
+        status=status,
+        data=data or {},
+        brain_patch=brain_patch or {},
+        allowed_actions=allowed_actions or [],
+    )

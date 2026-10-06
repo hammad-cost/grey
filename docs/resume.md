@@ -20,7 +20,7 @@
 | 4 | Research plan v2: discover startups (YC, Product Hunt, F6S, Crunchbase/Dealroom public pages, StartupBlink) → confirm on startup websites (2nd hop, top ~5) → news → research papers (Scholar) → government → datasets; cap ~15 searches/run | ✅ done |
 | 5 | Workflow/API touch-ups: `ResearchSummary.startups_confirmed` (sent in `research_completed.data.summary`), `by_category` includes news; startup warning when `SEARCH_PROVIDERS` names a provider without a key | ✅ done |
 | 6 | Frontend: View sources shows source-type labels (`sourceTypeLabel`: Startup website vs Startup directory, News, Research paper, Government, …); research card describes the 6 steps and shows found-by-type (`startups_confirmed`, news, government, research, datasets); Sample data badge = fake LLM or `.example` sources | ✅ done |
-| 7 ⏸ | Live tests (skipped by default) for SerpAPI + Tavily; one full live run (real search + Groq) with OK | ⬜ |
+| 7 | Live tests (skipped by default) for SerpAPI + Tavily; one full live run (real search + Groq) with OK | ✅ done 2026-10-06 (`38c2b9d`) |
 | 8 | Docs (`current-state.md` §0a, `architecture.md` search path, `feature-map.md` F10), all checks, local commit of 0.3 + 0.4 | ✅ done (not pushed) |
 
 Research plan v2 (Step 4): steps `discover_startups` → `confirm_startups` (2nd hop: `startups.py` names from directory titles, own site = host contains the squashed name and isn't a listed/gov site → STARTUP Tier A) → `industry_news` (new `ResearchCategory.NEWS`) → `government` (2 queries) → `research_papers` (SerpAPI Scholar ignores site filters) → `datasets`. `ResearchProgress.step` drives the checklist. Budget `RESEARCH_MAX_SEARCHES=15`; the 2nd hop only uses what's left after reserving later steps; max 5 startups.

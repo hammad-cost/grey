@@ -108,7 +108,8 @@ export function isSampleData(problems: ProblemOption[], provider?: unknown): boo
   return provider === "fake" || problems.some((p) => p.evidence.some((s) => isExampleAddress(s.url)));
 }
 
-function isExampleAddress(url: string): boolean {
+/** True for the reserved ".example" web addresses that mock search results use. */
+export function isExampleAddress(url: string): boolean {
   try {
     return new URL(url).hostname.endsWith(".example");
   } catch {

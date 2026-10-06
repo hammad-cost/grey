@@ -10,11 +10,17 @@
  *   EVIDENCE_RESEARCH  → ResearchProgressCard (start, live progress, summary)
  *                        + ProblemProgressCard (finding problems, right after research)
  *   PROBLEM_OPTIONS    → ProblemOptions (3–5 ProblemOpportunityCards, confirm step)
- *   PROBLEM_SELECTED   → SelectedProblemCard
+ *   PROBLEM_SELECTED   → SelectedProblemCard + FYPDirectionCard (Grey designing the FYP)
+ *   AREA_CLASSIFICATION→ FunctionalAreaCard + FYPDirectionCard (still designing)
+ *   FYP_DESIGN         → FunctionalAreaCard + FYPDirectionCard (review: approve / adjust)
+ *   APPROVED_FYP       → ApprovedFYPCard (Release 0.5 ends here)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
+import { ApprovedFYPCard } from "@/domains/fyp/components/ApprovedFYPCard";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
+import { FunctionalAreaCard } from "@/domains/fyp/components/FunctionalAreaCard";
+import { FYPDirectionCard } from "@/domains/fyp/components/FYPDirectionCard";
 import { IndustrySelector } from "@/domains/fyp/components/IndustrySelector";
 import { ProblemOptions } from "@/domains/fyp/components/ProblemOptions";
 import { ProblemProgressCard } from "@/domains/fyp/components/ProblemProgressCard";
@@ -22,7 +28,9 @@ import { ResearchProgressCard } from "@/domains/fyp/components/ResearchProgressC
 import { SelectedProblemCard } from "@/domains/fyp/components/SelectedProblemCard";
 
 // Stages whose cards show their own progress, so the generic spinner is hidden.
-const STAGES_WITH_OWN_PROGRESS = ["EVIDENCE_RESEARCH", "PROBLEM_OPTIONS"];
+const STAGES_WITH_OWN_PROGRESS = [
+  "EVIDENCE_RESEARCH", "PROBLEM_OPTIONS", "PROBLEM_SELECTED", "AREA_CLASSIFICATION", "FYP_DESIGN",
+];
 
 export default function Home() {
   const state = useGreyUIState();
@@ -90,8 +98,13 @@ export default function Home() {
         {/* ── PROBLEM_OPTIONS — the student's mandatory choice ────────────── */}
         <ProblemOptions />
 
-        {/* ── PROBLEM_SELECTED — discovery complete (Release 0.3) ─────────── */}
-        <SelectedProblemCard />
+        {/* ── From problem to FYP (Release 0.5) ───────────────────────────── */}
+        <div className="flex flex-col gap-4">
+          <SelectedProblemCard />
+          <FunctionalAreaCard />
+          <FYPDirectionCard />
+          <ApprovedFYPCard />
+        </div>
 
       </div>
 

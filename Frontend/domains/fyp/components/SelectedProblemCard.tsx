@@ -50,7 +50,7 @@ export function SelectedProblemCard() {
       )}
 
       <p className="mt-4 text-sm text-gray-400">
-        Next, Grey will turn this problem into a concrete FYP direction (coming in a future release).
+        Next, Grey turns this problem into a concrete FYP for you to review.
       </p>
     </section>
   );

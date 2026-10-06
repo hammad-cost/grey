@@ -22,7 +22,7 @@ const TIER_STYLE: Record<string, string> = {
   C: "bg-gray-50 text-gray-600 border-gray-200",
 };
 
-function TierBadge({ tier, count }: { tier: string; count?: number }) {
+export function TierBadge({ tier, count }: { tier: string; count?: number }) {
   return (
     <span className={`rounded border px-1.5 py-0.5 text-xs font-medium ${TIER_STYLE[tier] ?? TIER_STYLE.C}`}>
       Tier {tier}

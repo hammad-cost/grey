@@ -5,7 +5,15 @@ These define the shape of what the backend sends back to the frontend.
 """
 from pydantic import BaseModel
 
-from app.core.brain.schemas import ProblemRun, ResearchRun, StoredEvidenceSource, StoredProblemCandidate
+from app.core.brain.schemas import (
+    FYPDesignRun,
+    ProblemRun,
+    ResearchRun,
+    StoredEvidenceSource,
+    StoredProblemCandidate,
+    WorkflowState,
+)
+from app.domains.fyp.workflows.fyp_design.view import FYPDesignView
 
 
 class EvidenceListResponse(BaseModel):
@@ -21,3 +29,11 @@ class ProblemListResponse(BaseModel):
     problem_run: ProblemRun | None = None              # latest attempt, None if never run
     problems: list[StoredProblemCandidate] = []        # current options, rank 1 first, with sources
     selected_problem_id: str | None = None             # the student's choice, once made
+
+
+class FYPDesignResponse(BaseModel):
+    """Body for GET /projects/{workspace_id}/fyp-design (Release 0.5)."""
+    workspace_id: str
+    workflow_state: WorkflowState
+    fyp: FYPDesignView | None = None             # None until a problem has been chosen
+    latest_run: FYPDesignRun | None = None       # the latest design attempt, None if never run

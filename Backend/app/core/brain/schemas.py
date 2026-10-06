@@ -26,6 +26,7 @@ class WorkflowState(str, Enum):
     PROBLEM_SELECTED = "PROBLEM_SELECTED"
     AREA_CLASSIFICATION = "AREA_CLASSIFICATION"
     FYP_DESIGN = "FYP_DESIGN"
+    APPROVED_FYP = "APPROVED_FYP"          # Release 0.5 ends here: the student approved the FYP design
     SCOPE = "SCOPE"
     DATASET_DISCOVERY = "DATASET_DISCOVERY"
     AI_STRATEGY = "AI_STRATEGY"
@@ -268,6 +269,115 @@ class ProblemRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── From problem to FYP (Release 0.5) ─────────────────────────────────────────
+
+# The student may ask Grey to redesign the FYP this many times (same problem).
+# After that only "Approve" remains, so the journey keeps moving (blueprint §45).
+MAX_FYP_ADJUSTMENTS = 3
+
+
+class FunctionalArea(BaseModel):
+    """
+    Where the chosen problem sits (blueprint §16), decided by Grey, never asked.
+    e.g. Defense → Navy → Maritime Surveillance → Vessel Behavior Monitoring.
+    """
+    functional_area: str = Field(min_length=1, max_length=80)
+    specific_area: str = Field(min_length=1, max_length=80)
+    explanation: str = Field(min_length=1)          # one plain sentence for the student
+
+
+class StoredFunctionalArea(FunctionalArea):
+    """The project's functional area as read back from the Project Brain."""
+    workspace_id: str
+    problem_id: str
+    provider: str
+    model: str
+    prompt_version: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class FYPAdjustment(str, Enum):
+    """
+    The controlled ways a student can ask for a redesign (no open brainstorming).
+    Grey keeps the same problem every time.
+    """
+    MAKE_SIMPLER = "make_simpler"
+    CHANGE_TARGET_USER = "change_target_user"
+    CHANGE_SYSTEM_FOCUS = "change_system_focus"
+    REDUCE_COMPLEXITY = "reduce_complexity"
+
+
+class FYPDesign(BaseModel):
+    """
+    A student-sized project built from the chosen problem (blueprint §17).
+
+    It describes WHAT the student builds and for whom — never a specific
+    dataset, model, API or technology stack (those are later stages).
+    """
+    title: str = Field(min_length=1, max_length=120)
+    summary: str = Field(min_length=1)               # what the student will build
+    target_user: str = Field(min_length=1)           # who uses the system
+    system_input: str = Field(min_length=1)          # what goes in
+    system_output: str = Field(min_length=1)         # what comes out
+    main_contribution: str = Field(min_length=1)     # what is new or useful about it
+    scope_reduction: str = Field(min_length=1)       # how the real-world problem was made student-sized
+
+
+class FYPDesignStatus(str, Enum):
+    """Each design is a version: the newest is the draft; older ones are superseded; one may be approved."""
+    DRAFT = "draft"
+    SUPERSEDED = "superseded"
+    APPROVED = "approved"
+
+
+class StoredFYPDesign(FYPDesign):
+    """One version of the FYP design as read back from the Project Brain."""
+    id: str
+    workspace_id: str
+    problem_id: str
+    run_id: str
+    version: int                                     # 1 = first design, 2–4 = redesigns
+    status: FYPDesignStatus
+    adjustment: FYPAdjustment | None = None          # what the student asked for (None for version 1)
+    note: str | None = None                          # the student's optional short note
+    created_at: datetime
+    approved_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class FYPDesignRunKind(str, Enum):
+    INITIAL = "initial"          # area (if not known yet) + first design
+    ADJUSTMENT = "adjustment"    # a redesign the student asked for
+
+
+class FYPDesignRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class FYPDesignRun(BaseModel):
+    """One attempt at designing (or redesigning) the FYP."""
+    id: str
+    workspace_id: str
+    problem_id: str
+    kind: FYPDesignRunKind
+    adjustment: FYPAdjustment | None = None
+    note: str | None = None
+    status: FYPDesignRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -292,6 +402,14 @@ class WorkspaceBrainSnapshot(BaseModel):
     # (Release 0.3). The options are read separately with list_problem_candidates().
     problem_run: ProblemRun | None = None
     selected_problem: StoredProblemCandidate | None = None
+
+    # From problem to FYP (Release 0.5): where the problem sits, the current
+    # design (the draft, or the approved one), how many redesigns were used,
+    # and the latest design attempt.
+    functional_area: StoredFunctionalArea | None = None
+    fyp_design: StoredFYPDesign | None = None
+    fyp_adjustments_used: int = 0
+    fyp_design_run: FYPDesignRun | None = None
 
     created_at: datetime
     updated_at: datetime

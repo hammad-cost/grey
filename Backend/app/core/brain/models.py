@@ -7,6 +7,9 @@ evidence_source — one row per piece of evidence found.
 problem_run       — one row per problem-extraction attempt (Release 0.3).
 problem_candidate — one row per problem option shown to the student.
 problem_evidence  — which evidence supports which problem option.
+functional_area   — where the chosen problem sits (Release 0.5), one per project.
+fyp_design_run    — one row per FYP design or redesign attempt (Release 0.5).
+fyp_design        — one row per version of the FYP design (draft / superseded / approved).
 
 Together they are the authoritative state of a student's FYP journey.
 Chat history and LangGraph runtime state are NOT stored here —
@@ -212,3 +215,93 @@ class ProblemEvidenceRecord(Base):
         String, ForeignKey("evidence_source.id"), primary_key=True
     )
     supporting_point: Mapped[str] = mapped_column(Text)
+
+
+class FunctionalAreaRecord(Base):
+    """Where the student's chosen problem sits (Release 0.5). One per project."""
+
+    __tablename__ = "functional_area"
+
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), primary_key=True
+    )
+    problem_id: Mapped[str] = mapped_column(String, ForeignKey("problem_candidate.id"))
+
+    functional_area: Mapped[str] = mapped_column(Text)
+    specific_area: Mapped[str] = mapped_column(Text)
+    explanation: Mapped[str] = mapped_column(Text)
+
+    # Which LLM classified it
+    provider: Mapped[str] = mapped_column(String)
+    model: Mapped[str] = mapped_column(String)
+    prompt_version: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class FYPDesignRunRecord(Base):
+    """
+    One attempt at designing the FYP (kind "initial") or redesigning it after
+    the student asked for an adjustment (kind "adjustment"). Release 0.5.
+    Only one may be "running" per project at a time.
+    """
+
+    __tablename__ = "fyp_design_run"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    problem_id: Mapped[str] = mapped_column(String, ForeignKey("problem_candidate.id"))
+
+    kind: Mapped[str] = mapped_column(String)                       # FYPDesignRunKind value
+    adjustment: Mapped[str | None] = mapped_column(String, nullable=True)   # FYPAdjustment value
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    status: Mapped[str] = mapped_column(String)                     # FYPDesignRunStatus value
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Filled in when the run completes: which LLM produced the design
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Filled in when the run fails
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class FYPDesignRecord(Base):
+    """
+    One version of the student's FYP design (Release 0.5).
+
+    Version 1 is the first design; each redesign adds a version and the
+    previous draft becomes "superseded" (nothing is deleted). The student
+    approves exactly one version.
+    """
+
+    __tablename__ = "fyp_design"
+    __table_args__ = (UniqueConstraint("workspace_id", "version", name="uq_fyp_design_version"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    problem_id: Mapped[str] = mapped_column(String, ForeignKey("problem_candidate.id"))
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("fyp_design_run.id"))
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String)                     # FYPDesignStatus value
+
+    title: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text)
+    target_user: Mapped[str] = mapped_column(Text)
+    system_input: Mapped[str] = mapped_column(Text)
+    system_output: Mapped[str] = mapped_column(Text)
+    main_contribution: Mapped[str] = mapped_column(Text)
+    scope_reduction: Mapped[str] = mapped_column(Text)
+
+    # What the student asked for to get this version (None for version 1)
+    adjustment: Mapped[str | None] = mapped_column(String, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

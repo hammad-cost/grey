@@ -1,4 +1,6 @@
 from .repository import (
+    FYPDesignError,
+    FYPDesignRunAlreadyRunningError,
     ProblemRunAlreadyRunningError,
     ProblemSelectionError,
     ResearchAlreadyRunningError,
@@ -16,6 +18,8 @@ from .database import create_all_tables, get_session
 
 __all__ = [
     "EvidenceSource",
+    "FYPDesignError",
+    "FYPDesignRunAlreadyRunningError",
     "ProblemCandidate",
     "ProblemRun",
     "ProblemRunAlreadyRunningError",

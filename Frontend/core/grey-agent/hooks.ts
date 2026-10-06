@@ -49,18 +49,26 @@ async function errorFromResponse(response: Response): Promise<Error> {
 /** Each streamed step ends with exactly one of these events. */
 const RESEARCH_END_EVENTS = ["research_completed", "research_failed"];
 const PROBLEM_END_EVENTS = ["problem_options_ready", "problem_extraction_failed"];
+const FYP_DESIGN_END_EVENTS = ["fyp_direction_ready", "fyp_design_failed"];
 
 /**
- * POST to a streaming endpoint and apply every event as it arrives.
- * Returns the final event; throws if the request fails or the stream stops early.
+ * POST to a streaming endpoint (with an optional JSON body) and apply every
+ * event as it arrives. Returns the final event; throws if the request fails
+ * or the stream stops early.
  */
 async function runEventStream(
   path: string,
   endEvents: string[],
   applyEvent: (event: GreyEvent) => void,
-  what: string
+  what: string,
+  body?: unknown
 ): Promise<GreyEvent> {
-  const response = await fetch(`${BACKEND_URL}${path}`, { method: "POST" });
+  const response = await fetch(
+    `${BACKEND_URL}${path}`,
+    body === undefined
+      ? { method: "POST" }
+      : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+  );
   if (!response.ok) throw await errorFromResponse(response);
   if (!response.body) throw new Error(`${what} did not start. Please try again.`);
 
@@ -209,14 +217,75 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  /** Save the student's chosen problem (a mandatory decision). */
+  /**
+   * Save the student's chosen problem (a mandatory decision), then — when the
+   * backend says so (problem_selected allows "designFYP") — turn it into an FYP
+   * straight away (Release 0.5). Resolves with the final event
+   * (fyp_direction_ready or fyp_design_failed, or problem_selected).
+   */
   const selectProblem = useCallback(
     (problemId: string) =>
       run(async () => {
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${workspaceId}/problem`,
+          { method: "POST", body: JSON.stringify({ problem_id: problemId }) }
+        );
+        applyEvent(event);
+        if (!event.allowed_actions.includes(Actions.DESIGN_FYP)) return event;
+
+        return runEventStream(
+          `/projects/${workspaceId}/fyp-design`, FYP_DESIGN_END_EVENTS, applyEvent, "Designing your FYP"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /**
+   * Design the FYP from the chosen problem (e.g. "Try again" after
+   * fyp_design_failed). Streams progress; resolves with fyp_direction_ready
+   * or fyp_design_failed.
+   */
+  const designFYP = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/fyp-design`, FYP_DESIGN_END_EVENTS, applyEvent, "Designing your FYP"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /**
+   * Ask Grey for one controlled redesign of the current FYP (up to 3), with
+   * an optional short note. Streams progress like designFYP.
+   */
+  const adjustFYPDirection = useCallback(
+    (adjustment: string, note?: string) =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        const trimmed = note?.trim();
+        return runEventStream(
+          `/projects/${state.workspaceId}/fyp-design/adjust`,
+          FYP_DESIGN_END_EVENTS,
+          applyEvent,
+          "Redesigning your FYP",
+          trimmed ? { adjustment, note: trimmed } : { adjustment }
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Approve the current FYP design (a mandatory decision). Release 0.5 ends here. */
+  const approveFYPDirection = useCallback(
+    (designId: string) =>
+      run(async () => {
         if (!state.workspaceId) throw new Error("No active project.");
         const event = await apiFetch<GreyEvent>(
-          `/projects/${state.workspaceId}/problem`,
-          { method: "POST", body: JSON.stringify({ problem_id: problemId }) }
+          `/projects/${state.workspaceId}/fyp-design/approve`,
+          { method: "POST", body: JSON.stringify({ design_id: designId }) }
         );
         applyEvent(event);
         return event;
@@ -224,5 +293,15 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  return { startProject, selectIndustry, selectBranch, startResearch, extractProblems, selectProblem };
+  return {
+    startProject,
+    selectIndustry,
+    selectBranch,
+    startResearch,
+    extractProblems,
+    selectProblem,
+    designFYP,
+    adjustFYPDirection,
+    approveFYPDirection,
+  };
 }

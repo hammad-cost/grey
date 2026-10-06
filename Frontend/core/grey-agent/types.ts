@@ -38,6 +38,14 @@ export type WorkspaceBrainSummary = {
   problemOptionCount?: number;
   selectedProblemId?: string;
   selectedProblemTitle?: string;
+  /** From problem to FYP (Release 0.5). */
+  functionalArea?: string;
+  specificArea?: string;
+  /** "running" | "draft" | "approved" | "failed". */
+  fypDesignStatus?: string;
+  fypDesignId?: string;
+  fypTitle?: string;
+  fypAdjustmentsLeft?: number;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -105,6 +113,9 @@ export const Actions = {
   START_RESEARCH: "startResearch",
   EXTRACT_PROBLEMS: "extractProblems",
   SELECT_PROBLEM: "selectProblem",
+  DESIGN_FYP: "designFYP",
+  APPROVE_FYP_DIRECTION: "approveFYPDirection",
+  ADJUST_FYP_DIRECTION: "adjustFYPDirection",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

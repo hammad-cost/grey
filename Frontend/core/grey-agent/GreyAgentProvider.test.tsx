@@ -129,6 +129,53 @@ const problemSelected: GreyEvent = {
   allowed_actions: [],
 };
 
+/** problem_selected as Release 0.5 sends it: the FYP should be designed next. */
+const problemSelectedDesignNext: GreyEvent = { ...problemSelected, allowed_actions: ["designFYP"] };
+
+/** An FYP design event, shaped like the backend's streamed events (Release 0.5). */
+function fypEvent(type: string, extra: Partial<GreyEvent> = {}): GreyEvent {
+  return {
+    type,
+    workspace_id: "w_123",
+    domain: "fyp",
+    workflow: "fyp_design",
+    stage: "PROBLEM_SELECTED",
+    status: "running",
+    data: { label: `${type} label`, completed_steps: 1, total_steps: 4 },
+    brain_patch: {},
+    allowed_actions: [],
+    ...extra,
+  };
+}
+
+const fypStarted = fypEvent("fyp_design_started", { brain_patch: { fyp_design_status: "running" } });
+const areaClassified = fypEvent("area_classified", {
+  stage: "AREA_CLASSIFICATION",
+  brain_patch: {
+    workflow_state: "AREA_CLASSIFICATION",
+    functional_area: "Maritime Surveillance",
+    specific_area: "Vessel Behavior Monitoring",
+  },
+});
+const fypReady = fypEvent("fyp_direction_ready", {
+  stage: "FYP_DESIGN",
+  status: "awaiting_user",
+  data: { label: "Your FYP design is ready", completed_steps: 4, total_steps: 4, fyp: { design: { id: "d-1" } } },
+  brain_patch: {
+    workflow_state: "FYP_DESIGN",
+    fyp_design_id: "d-1",
+    fyp_title: "Vessel alerts",
+    fyp_design_status: "draft",
+    fyp_adjustments_left: 3,
+  },
+  allowed_actions: ["approveFYPDirection", "adjustFYPDirection"],
+});
+const fypApproved = fypEvent("fyp_direction_approved", {
+  stage: "APPROVED_FYP",
+  status: "complete",
+  brain_patch: { workflow_state: "APPROVED_FYP", fyp_design_status: "approved" },
+});
+
 /** A streamed reply with these events, one JSON per line. */
 function streamOf(...events: GreyEvent[]) {
   return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
@@ -138,8 +185,10 @@ function streamOf(...events: GreyEvent[]) {
 function Probe() {
   const state = useGreyUIState();
   const { error } = useGreyAgent();
-  const { startProject, selectIndustry, selectBranch, startResearch, extractProblems, selectProblem } =
-    useGreyActions();
+  const {
+    startProject, selectIndustry, selectBranch, startResearch, extractProblems, selectProblem,
+    designFYP, adjustFYPDirection, approveFYPDirection,
+  } = useGreyActions();
   return (
     <>
       <button onClick={() => startProject()}>start</button>
@@ -148,6 +197,10 @@ function Probe() {
       <button onClick={() => startResearch().catch(() => {})}>research</button>
       <button onClick={() => extractProblems().catch(() => {})}>find problems</button>
       <button onClick={() => selectProblem("p-2").catch(() => {})}>pick problem 2</button>
+      <button onClick={() => designFYP().catch(() => {})}>design fyp</button>
+      <button onClick={() => adjustFYPDirection("make_simpler", "  For port staff ").catch(() => {})}>adjust</button>
+      <button onClick={() => adjustFYPDirection("reduce_complexity", "   ").catch(() => {})}>adjust no note</button>
+      <button onClick={() => approveFYPDirection("d-1").catch(() => {})}>approve</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -419,5 +472,120 @@ describe("GreyAgentProvider", () => {
     await waitFor(() =>
       expect(screen.getByTestId("error").textContent).toBe("'p-2' is not one of this project's problem options.")
     );
+  });
+
+  // ── Release 0.5: from problem to FYP ──────────────────────────────────────
+
+  it("selectProblem designs the FYP straight away when the backend allows it", async () => {
+    replyWith(projectCreated);
+    replyWith(problemSelectedDesignNext);
+    fetchMock.mockResolvedValueOnce(streamOf(fypStarted, areaClassified, fypReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("pick problem 2"));
+    await waitFor(() => expect(readState().currentStage).toBe("FYP_DESIGN"));
+
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/fyp-design$/);
+    expect(fetchMock.mock.calls[2][1].method).toBe("POST");
+    const state = readState();
+    expect(state.allowedActions).toEqual(["approveFYPDirection", "adjustFYPDirection"]);
+    expect(state.brainSummary).toMatchObject({
+      selectedProblemTitle: "Problem two",
+      functionalArea: "Maritime Surveillance",
+      specificArea: "Vessel Behavior Monitoring",
+      fypDesignId: "d-1",
+      fypTitle: "Vessel alerts",
+      fypDesignStatus: "draft",
+      fypAdjustmentsLeft: 3,
+      workflowState: "FYP_DESIGN",
+    });
+  });
+
+  it("selectProblem stops after saving the choice when no design is allowed", async () => {
+    replyWith(projectCreated);
+    replyWith(problemSelected);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("pick problem 2"));
+    await waitFor(() => expect(readState().currentStage).toBe("PROBLEM_SELECTED"));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("designFYP retries the design on its own", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(fypStarted, fypReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("design fyp"));
+    await waitFor(() => expect(readState().currentStage).toBe("FYP_DESIGN"));
+
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/fyp-design$/);
+  });
+
+  it("designFYP shows an error if the stream stops early", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(fypStarted));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("design fyp"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("error").textContent).toMatch(/connection to Grey was lost during designing your fyp/)
+    );
+  });
+
+  it("adjustFYPDirection posts the controlled adjustment and a trimmed note", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(fypStarted, fypReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("adjust"));
+    await waitFor(() => expect(readState().lastEventType).toBe("fyp_direction_ready"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/fyp-design\/adjust$/);
+    expect(options.method).toBe("POST");
+    expect(options.headers).toEqual({ "Content-Type": "application/json" });
+    expect(JSON.parse(options.body)).toEqual({ adjustment: "make_simpler", note: "For port staff" });
+  });
+
+  it("adjustFYPDirection leaves out an empty note", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(fypStarted, fypReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("adjust no note"));
+    await waitFor(() => expect(readState().lastEventType).toBe("fyp_direction_ready"));
+
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ adjustment: "reduce_complexity" });
+  });
+
+  it("approveFYPDirection posts the design id and finishes at APPROVED_FYP", async () => {
+    replyWith(projectCreated);
+    replyWith(fypApproved);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("approve"));
+    await waitFor(() => expect(readState().currentStage).toBe("APPROVED_FYP"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/fyp-design\/approve$/);
+    expect(JSON.parse(options.body)).toEqual({ design_id: "d-1" });
+    expect(readState().brainSummary).toMatchObject({ fypDesignStatus: "approved", workflowState: "APPROVED_FYP" });
   });
 });

@@ -1,6 +1,6 @@
 # Grey — Architecture (as built)
 
-**Last updated:** 2026-10-06 (Release 0.4)
+**Last updated:** 2026-10-06 (Release 0.5)
 
 This describes the architecture that **actually exists in the code**.
 The target architecture is defined in `docs/specs/` (backend and frontend blueprints v2). Where the two differ, see §6.
@@ -14,19 +14,24 @@ The target architecture is defined in `docs/specs/` (backend and frontend bluepr
 │ app/page.tsx  ── picks a component by GreyUIState.currentStage              │
 │   └ domains/fyp/components/  IndustrySelector, BranchSelector,             │
 │                              ResearchProgressCard, ProblemProgressCard,    │
-│                              ProblemOptions, SelectedProblemCard           │
+│                              ProblemOptions, SelectedProblemCard,          │
+│                              FunctionalAreaCard, FYPDirectionCard,         │
+│                              ApprovedFYPCard                               │
 │        └ core/grey-agent/    Grey UI Adapter (provider + hooks + stream)   │
 │              useGreyActions() ── fetch() ──────────────┐                    │
 └────────────────────────────────────────────────────────┼────────────────────┘
                               HTTP + JSON, NDJSON stream │ (CORS)
 ┌──────────────────────── Backend (FastAPI, :8000) ──────▼────────────────────┐
-│ app/api/projects.py, research.py, problems.py   thin routes                 │
+│ app/api/projects.py, research.py, problems.py, fyp_design.py  thin routes   │
 │   ├ app/domains/fyp/workflows/discovery/   LangGraph Discovery graph        │
 │   │     (MemorySaver checkpointer, thread_id = workspace_id)                │
 │   │     ├ research_runner.py  runs evidence_research, yields GreyEvents     │
 │   │     └ problem_runner.py   runs problem_extraction, applies the choice   │
+│   ├ app/domains/fyp/workflows/fyp_design/  LangGraph FYP Design graph (0.5) │
+│   │     └ runner.py  area → design → review (approve / ≤3 redesigns)        │
 │   ├ app/core/skills/     SkillRegistry ← ResearchEvidenceSkill,             │
-│   │                                      ProblemExtractionSkill (FYP)       │
+│   │                                      ProblemExtractionSkill,            │
+│   │                                      ClassifyAreaSkill, DesignFYPSkill  │
 │   │     ├ app/core/tools/  SearchGateway → SerpAPI / Tavily (or Mock)      │
 │   │     └ app/core/llm/    LLMGateway → router → Fake / Groq providers     │
 │   ├ app/core/brain/      WorkspaceBrainRepository → SQLAlchemy → SQLite     │
@@ -46,6 +51,7 @@ Backend/
     ├── api/projects.py             discovery routes (thin)
     ├── api/research.py             research stream + evidence routes (thin)
     ├── api/problems.py             problem stream + selection + listing routes (thin)
+    ├── api/fyp_design.py           FYP design stream, redesign stream, approval, read (thin, 0.5)
     ├── core/                       shared, domain-independent
     │   ├── config/                 Settings from .env
     │   ├── brain/                  Project Brain: model, schemas, repository, database, readers
@@ -56,11 +62,15 @@ Backend/
     │   └── llm/                    LLM gateway: profiles, router, health, errors, providers/
     └── domains/fyp/                FYP-specific code
         ├── schemas/                request + response bodies
-        ├── prompts/                versioned prompts (problem_extraction.py)
+        ├── prompts/                versioned prompts (problem_extraction.py, classify_area.py, design_fyp.py)
         ├── skills/research_evidence/  ResearchEvidenceSkill: research plan (queries.py), site lists
         │                              (sources.py), classification rules, second hop (startups.py)
         ├── skills/problem_extraction/ ProblemExtractionSkill: context, validation, fake answers
-        └── workflows/discovery/    state, nodes, graph, taxonomy, research/problem runners + events
+        ├── skills/classify_area/   ClassifyAreaSkill: functional + specific area (0.5)
+        ├── skills/design_fyp/      DesignFYPSkill: student-sized FYP, controlled redesigns, checks (0.5)
+        ├── skills/fyp_design_shared.py  ProblemBrief, progress, text checks shared by the two 0.5 skills
+        ├── workflows/discovery/    state, nodes, graph, taxonomy, research/problem runners + events
+        └── workflows/fyp_design/   state, nodes, graph, runner, events, view ("Why this FYP?") (0.5)
 ```
 
 **Responsibilities**
@@ -73,6 +83,7 @@ Backend/
 | Taxonomy (`taxonomy.py`) | The fixed industry/branch lists | — (deterministic data, no AI) |
 | Research runner (`research_runner.py`) | Checking research may start, recording the run, streaming the graph's progress as events | Research logic |
 | Problem runner (`problem_runner.py`) | Checking extraction may start, recording the run, saving options and the choice, rebuilding the HITL pause after a restart | Problem logic, calling the LLM |
+| FYP design runner (`workflows/fyp_design/runner.py`) | Checking a design / redesign / approval may happen, recording each run, saving the area, each design version and the approval, rebuilding the review pause from the Brain before every step | Area or design logic, calling the LLM |
 | Skill (`domains/fyp/skills/`) | Research: searching, classifying, ranking evidence. Problems: choosing context, asking the LLM, checking/merging/ranking drafts | Writing to the database, HTTP, choosing a model |
 | Tool (`core/tools/`) | Talking to search providers; ordered fallback, retries, rest periods (`SearchGateway`) | Knowing about students, workflows or evidence tiers |
 | LLM gateway (`core/llm/`) | Picking a model from a profile, retries, fallback, cooldowns, schema validation, logging | Knowing about FYPs, prompts, or the database |
@@ -119,13 +130,31 @@ ProblemExtractionSkill
 → problem runner saves them (the LLM never touches the database)
 ```
 
+### FYP design path (Release 0.5)
+
+```
+selectProblem → problem_selected (allows designFYP) → adapter POSTs /fyp-design
+  runner: check stage, claim project, fail leftover run, position the graph
+  fyp_design graph
+    area_classification  → ClassifyAreaSkill (fast_cheap) → runner saves functional_area
+                            (stage AREA_CLASSIFICATION) → area_classified event
+    fyp_design           → DesignFYPSkill (structured_reasoning) → checks → runner saves
+                            version 1 (stage FYP_DESIGN) → fyp_direction_ready
+    fyp_review           ⏸ interrupt
+      adjust (≤3)  → POST /fyp-design/adjust → Command(resume=adjust) → fyp_design again
+                     → new version, previous draft superseded
+      approve      → POST /fyp-design/approve → Command(resume=approve) → END
+                     → stage APPROVED_FYP
+  "Why this FYP?" = code over the stored problem + its cited evidence + design.scope_reduction
+```
+
 ## 3. Two kinds of state
 
 | | Project Brain | LangGraph state |
 |---|---|---|
 | Purpose | Accepted decisions — **source of truth** | Where the workflow is paused |
-| Stored in | Database (`workspace_brain`, `research_run`, `evidence_source`, `problem_run`, `problem_candidate`, `problem_evidence`) | `MemorySaver` (process memory) |
-| Survives restart | Yes | **No** (research, problem extraction and selection rebuild their position from the Brain) |
+| Stored in | Database (`workspace_brain`, `research_run`, `evidence_source`, `problem_run`, `problem_candidate`, `problem_evidence`, `functional_area`, `fyp_design_run`, `fyp_design`) | `MemorySaver` (process memory), one per graph (discovery, fyp_design) |
+| Survives restart | Yes | **No** (research, problem extraction, selection and every FYP design step rebuild their position from the Brain) |
 | Written by | API route via repository | LangGraph |
 
 The frontend's `GreyUIState` is a third, display-only copy. It is rebuilt from events and is never treated as truth.
@@ -144,15 +173,17 @@ Frontend/
 │   ├── stream.ts           readEventStream(): reads one GreyEvent per line from a streamed response
 │   └── index.ts            public exports — components import only from here
 ├── domains/fyp/components/ IndustrySelector, BranchSelector, ResearchProgressCard, ProblemProgressCard,
-│                           ProblemOptions, ProblemOpportunityCard, SelectedProblemCard, StepChecklist
-└── domains/fyp/problems.ts reads problem options from event data safely
+│                           ProblemOptions, ProblemOpportunityCard, SelectedProblemCard, StepChecklist,
+│                           FunctionalAreaCard, FYPDirectionCard, ApprovedFYPCard (0.5)
+├── domains/fyp/problems.ts reads problem options from event data safely
+└── domains/fyp/fypDesign.ts reads the area / FYP design / Why this FYP from event data safely (0.5)
 ```
 
 **Rules in force**
 - Product components import from `@/core/grey-agent` only — never from CopilotKit or `fetch` directly.
 - What to render is decided by `currentStage` **and** `allowedActions` from the latest backend event.
 - Option lists (industries, branches, problems) and checklists come from `eventData`, never hardcoded in the UI.
-- `lastEventType` tells a card whether the latest `eventData` belongs to it (research vs problems).
+- `lastEventType` tells a card whether the latest `eventData` belongs to it (research vs problems vs FYP design).
 
 ---
 
@@ -175,8 +206,8 @@ Every state-changing response is a `GreyEvent`:
 ```
 
 - Backend uses **snake_case**; the adapter converts `brain_patch` keys to camelCase (`industryStatus`, `branchStatus`, `workflowState`).
-- Transport: plain HTTP `POST`/`GET`, one request → one event — except `POST /projects/{id}/research` and `POST /projects/{id}/problems`, which stream many events as newline-delimited JSON (`application/x-ndjson`). Errors before a stream starts are HTTP errors (404/409); failures during it arrive as a `research_failed` / `problem_extraction_failed` event.
-- After `research_completed` (which allows `extractProblems`) the adapter immediately calls `/problems`, so the student doesn't click twice.
+- Transport: plain HTTP `POST`/`GET`, one request → one event — except `POST /projects/{id}/research`, `POST /projects/{id}/problems`, `POST /projects/{id}/fyp-design` and `POST /projects/{id}/fyp-design/adjust`, which stream many events as newline-delimited JSON (`application/x-ndjson`). Errors before a stream starts are HTTP errors (404/409/422); failures during it arrive as a `research_failed` / `problem_extraction_failed` / `fyp_design_failed` event.
+- After `research_completed` (which allows `extractProblems`) the adapter immediately calls `/problems`; after `problem_selected` (which allows `designFYP`) it immediately calls `/fyp-design` — so the student doesn't click twice.
 - CORS origins come from `CORS_ORIGINS` in `Backend/.env`.
 
 ---
@@ -189,7 +220,8 @@ Every state-changing response is a `GreyEvent`:
 | Workflows run through an orchestrator using skills | Routes call the graph (or the research runner) directly. The `evidence_research` node uses the first skill, `research_evidence`, via the `SkillRegistry`. | Industry/branch are deterministic. No separate orchestrator yet. |
 | Streaming via CopilotKit | Research progress streams over a plain `fetch` + NDJSON reader in the adapter | Same events, no CopilotKit runtime needed yet. |
 | LLM calls behind a gateway | `LLMGateway` with profiles and provider adapters; only Groq is wired as a real provider; fake mode is the default | Other providers (Anthropic, OpenAI, LiteLLM) are one adapter each. |
-| Real web / academic search | SerpAPI + Tavily behind `SearchGateway`; mock by default | Live run pending (needs keys). Adding a vendor = one adapter in `core/tools/providers/` + one entry in the factory. |
+| Real web / academic search | SerpAPI + Tavily behind `SearchGateway`; mock by default | Live-tested 2026-10-06. Adding a vendor = one adapter in `core/tools/providers/` + one entry in the factory. |
+| One workflow per stage (Discovery, FYP Design, …) | `discovery` and `fyp_design` are separate graphs, each with its own checkpointer | Later stages (scope, technical planning, …) get their own graphs the same way. |
 | Startup databases (Dealroom, Crunchbase) | Public pages found via search only | Paid APIs are optional, later. |
 | Durable workflow execution | `MemorySaver` (in-memory) checkpointer | Simple for 0.1. A persistent checkpointer is needed before real use (see `current-state.md` §5). |
 | PostgreSQL / Supabase | SQLite via `DATABASE_URL` | Swappable by config; no migrations tool yet (`create_all` at startup). |
@@ -201,5 +233,5 @@ Every state-changing response is a `GreyEvent`:
 
 | | Tool | Location | Notes |
 |---|---|---|---|
-| Backend | pytest + pytest-asyncio + httpx | `Backend/tests/unit`, `Backend/tests/integration`, `Backend/tests/live` | Integration tests (`tests/integration/conftest.py`) use in-memory SQLite, a fresh `MemorySaver`, and their own skill registry with a no-delay mock search and a fake-mode LLM gateway. `tests/conftest.py` forces `LLM_MODE=fake` and `SEARCH_PROVIDERS=mock` for every run. Search adapters are tested against `httpx.MockTransport`. `tests/live/` (marker `live_llm`) calls Groq only when `RUN_LIVE_LLM_TESTS=1`. |
+| Backend | pytest + pytest-asyncio + httpx | `Backend/tests/unit`, `Backend/tests/integration`, `Backend/tests/live` | Integration tests (`tests/integration/conftest.py`) use in-memory SQLite, a fresh `MemorySaver`, and their own skill registry with a no-delay mock search and a fake-mode LLM gateway. `tests/conftest.py` forces `LLM_MODE=fake` and `SEARCH_PROVIDERS=mock` for every run. Search adapters are tested against `httpx.MockTransport`. `tests/live/` calls Groq (marker `live_llm`) only when `RUN_LIVE_LLM_TESTS=1`, and SerpAPI/Tavily (marker `live_search`) only when `RUN_LIVE_SEARCH_TESTS=1`. |
 | Frontend | Vitest 5 + jsdom + Testing Library | `*.test.tsx` next to the code | Config: `Frontend/vitest.config.mts`. Component tests mock `@/core/grey-agent`; adapter tests fake only `fetch`. No browser end-to-end tool (by decision). |

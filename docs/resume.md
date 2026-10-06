@@ -4,13 +4,30 @@
 
 | | |
 |---|---|
-| Current release | **0.5 — planning.** 0.4.1 (evidence quality) is **paused after Step 1** by the student's choice ("improve evidence in future"); Steps 2–4 remain below. |
-| Current step | Write the 0.5 plan ("From problem to FYP") for the student to approve. No 0.5 code yet. |
-| Last completed step | 0.4.1 Step 1 — search targeting (Tavily first for site-limited searches, government site list, startup profile sites, 10/20 results per search). Government live ✅; startup re-check (1 search) never run — YC category pages gave 1 name before the 10/20 change. |
-| Next action | Student approves the 0.5 plan; then build 0.5 step by step with "go" between steps. Resume 0.4.1 Step 2 later. |
-| Last commit | "Release 0.3 + 0.4: problem opportunities and real-evidence search" on `main` (run `git log -1`). **Not pushed** — ask before pushing. |
+| Current release | **0.5 — From problem to FYP: COMPLETE** (all 7 steps, local commits `27e317f` … Step 7 docs commit). **Not pushed, not tagged** — the student reviews 0.5 first. Do NOT start 0.6. |
+| Current step | Waiting for the student's review of Release 0.5. |
+| Last completed step | 0.5 Step 7 — docs + full verification: 674 backend passing + 10 skipped (live), 104 frontend, type-check clean, build OK; fake-mode end-to-end run through a real server (design → 3 redesigns → 4th refused 409 → approve → APPROVED_FYP). |
+| Next action | Student reviews. Optional next: (a) one live 0.5 run with Groq (ask first; ~2–5 Groq calls), (b) browser walk-through of 0.3–0.5, (c) "push to GitHub", (d) resume 0.4.1 Step 2 (evidence quality), (e) plan 0.6 (scope) — only when asked. |
+| Last commit | Release 0.5 Step 7 docs commit on `main` (run `git log --oneline -10`). Unpushed commits since `origin/main`: 0.3+0.4, 0.4 Step 7, 0.4.1 Step 1, 0.5 Steps 1–7. **Ask before pushing.** |
 
-## Release 0.4.1 plan — Evidence quality (approved 2026-10-06; PAUSED after Step 1)
+## Release 0.5 plan — From problem to FYP (approved 2026-10-06; built in one continuous run)
+
+Boundary: `PROBLEM_SELECTED → AREA_CLASSIFICATION → FYP_DESIGN → review (≤3 controlled redesigns) → APPROVED_FYP`.
+Not in 0.5: scope, AI necessity/strategy, datasets, models, stack, architecture, evaluation, feasibility, proposal.
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | Brain: `functional_area`, `fyp_design_run`, `fyp_design` (versions draft/superseded/approved), stage `APPROVED_FYP`, repository + limits, snapshot fields | ✅ `27e317f` |
+| 2 | Skills `classify_area` (fast_cheap) + `design_fyp` (structured_reasoning) via registry + gateway; prompts; checks (no links / org names / named tech; unchanged redesign); fake answers | ✅ `8a5a03d` |
+| 3 | `fyp_design` LangGraph workflow (area → design → review interrupt → END or redesign), runner (restart-safe), events, "Why this FYP?" view; `problem_selected` allows `designFYP` | ✅ `c86859a` |
+| 4 | API: `POST /fyp-design` (stream), `POST /fyp-design/adjust` (stream), `POST /fyp-design/approve`, `GET /fyp-design` | ✅ `bce0a6a` |
+| 5 | Frontend adapter: `designFYP`, `adjustFYPDirection`, `approveFYPDirection`; auto-design after `selectProblem` | ✅ `53da182` |
+| 6 | `FunctionalAreaCard`, `FYPDirectionCard`, `ApprovedFYPCard`; `fypDesign.ts` | ✅ `496bfa2` |
+| 7 | Docs + full verification | ✅ (docs commit) |
+
+0.5 decisions: adjustments are exactly `make_simpler`, `change_target_user`, `change_system_focus`, `reduce_complexity` (no "more AI") + optional note ≤200 chars; max 3 saved redesigns (failed ones don't count); the design never names a dataset/model/API/stack; "Why this FYP?" is built by code from stored evidence; approval needs a confirm click.
+
+## Release 0.4.1 plan — Evidence quality (approved 2026-10-06; PAUSED after Step 1, `2708b85`)
 
 Live run (Healthcare → Clinical AI) findings are in current-state.md item 9.
 

@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-06 (Release 0.4)
+**Last updated:** 2026-10-06 (Release 0.5)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -18,15 +18,16 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F3 | Branch Selection | ✅ | 0.1 |
 | F4 | Project Brain persistence | ✅ (see limitations) | 0.1 |
 | F5 | Workflow transition to `EVIDENCE_RESEARCH` | ✅ | 0.1 |
-| F6 | Evidence Research (streamed progress) | ✅ 0.2; real search + six-step plan in 0.4 (live run pending) | 0.2 / 0.4 |
+| F6 | Evidence Research (streamed progress) | ✅ 0.2; real search + six-step plan in 0.4 (live-tested; quality work paused after 0.4.1 Step 1) | 0.2 / 0.4 |
 | F7 | Evidence read API | ✅ (no full-list UI; problem cards show their sources) | 0.2 |
 | F8 | Problem Opportunities (find, show, choose) | ✅ (fake LLM by default; Groq when configured) | 0.3 |
 | F9 | LLM gateway (profiles, fallback, providers) | ✅ (Fake + Groq) | 0.3 |
-| F10 | Search gateway (SerpAPI → Tavily fallback) | ✅ (live run pending) | 0.4 |
+| F10 | Search gateway (SerpAPI → Tavily fallback) | ✅ (live-tested) | 0.4 / 0.4.1 |
+| F11 | From problem to FYP (area, design, redesigns, approval) | ✅ (fake LLM by default; not yet run live) | 0.5 |
 
 ---
 
-## Request flow (shared by F1–F3; F6 and F8 stream — see F6, F8)
+## Request flow (shared by F1–F3; F6, F8 and F11 stream — see F6, F8, F11)
 
 ```
 Student clicks a button / card
@@ -176,7 +177,7 @@ Right after research, Grey turns the stored evidence into 3–5 real, evidence-b
 | Workflow | `problem_extraction` node (skill via registry; read-only evidence reader from the run config) → `problem_selection` node (`interrupt`, validates the id) — `nodes.py`, `graph.py` |
 | Skill | `ProblemExtractionSkill` — `Backend/app/domains/fyp/skills/problem_extraction/`: `context.py` (≤20 strongest sources, refs `E1…`, no URLs/ids, ~2,500-token budget), `validation.py` (unknown ref, ungrounded, only Tier C, names an organization, URL, too long, duplicate), `skill.py` (one retry with feedback; `TooFewProblemsError` if <3; `NotEnoughEvidenceError` → LLM not called), `fake.py` (fake-mode answers). Prompt: `app/domains/fyp/prompts/problem_extraction.py` (`problem_extraction.v1`). |
 | Project Brain | `problem_run` (status, research run used, provider, model, prompt version, drafts generated/kept, rejection counts, error), `problem_candidate` (options, rank, status `candidate`/`selected`), `problem_evidence` (problem ↔ evidence + supporting point). Stage → `PROBLEM_OPTIONS` then `PROBLEM_SELECTED`, in the same commit as the data. |
-| Events | `problem_extraction_started` → `problem_extraction_progress` ×4 → `problem_options_ready` (stage `PROBLEM_OPTIONS`, `awaiting_user`, allowed `selectProblem`, `data.problems`, `data.summary`) — or `problem_extraction_failed` (`blocked`, safe message, allowed `extractProblems` or `startResearch`). Then `problem_selected` (stage `PROBLEM_SELECTED`, `complete`, no actions). |
+| Events | `problem_extraction_started` → `problem_extraction_progress` ×4 → `problem_options_ready` (stage `PROBLEM_OPTIONS`, `awaiting_user`, allowed `selectProblem`, `data.problems`, `data.summary`) — or `problem_extraction_failed` (`blocked`, safe message, allowed `extractProblems` or `startResearch`). Then `problem_selected` (stage `PROBLEM_SELECTED`, `complete`, allowed `designFYP` since 0.5 → F11). |
 | Tests | Backend: `test_brain_problems.py`, `test_problem_extraction_skill.py`, `test_problem_workflow.py`, `tests/integration/test_problems_api.py`. Frontend: adapter tests (6 new), `ProblemOpportunityCard.test.tsx`, `ProblemOptions.test.tsx`, `ProblemProgressCard.test.tsx` |
 
 ---
@@ -208,4 +209,24 @@ Right after research, Grey turns the stored evidence into 3–5 real, evidence-b
 | Adapters | `SerpApiProvider` (google / tbm=nws / google_scholar, `site:` filters, tbs / as_ylo) and `TavilySearchProvider` (topic, include_domains, time_range) — `Backend/app/core/tools/providers/` |
 | Settings | `SEARCH_PROVIDERS` (`mock` default; `serpapi,tavily`; mock can't be mixed with real), `SERPAPI_API_KEY`, `TAVILY_API_KEY`, `RESEARCH_MAX_SEARCHES` (15), `SEARCH_TIMEOUT_SECONDS`, `SEARCH_MAX_RETRIES`, `SEARCH_COOLDOWN_SECONDS`, `SEARCH_QUOTA_COOLDOWN_SECONDS`; startup warning if a listed provider has no key |
 | Events / UI | Checklist ids = step ids; `research_completed.data.summary` adds `startups_confirmed` and `by_category.news`; research card shows found-by-type; View sources shows source-type labels — `research_events.py`, `ResearchProgressCard.tsx`, `ProblemOpportunityCard.tsx`, `problems.ts` |
-| Tests | `test_search_gateway.py`, `test_search_providers.py`, `test_startup_discovery.py`, `test_evidence_classification.py` (real sites), `test_research_evidence_skill.py` (second hop, budget); frontend `problems.test.ts`, card tests. Live tests: pending (Step 7). |
+| Tests | `test_search_gateway.py`, `test_search_providers.py`, `test_startup_discovery.py`, `test_evidence_classification.py` (real sites), `test_research_evidence_skill.py` (second hop, budget); frontend `problems.test.ts`, card tests. Live: `tests/live/test_search_live.py` (`-m live_search`, skipped unless `RUN_LIVE_SEARCH_TESTS=1`). 0.4.1 Step 1: `SearchProvider.keeps_to_sites()` (Tavily first for site-limited searches), `GOVERNMENT_SEARCH_SITES`, `STARTUP_PROFILE_SITES`, 10 results per search (20 for discovery). |
+
+---
+
+## F11 — From problem to FYP (Release 0.5)
+
+After the student confirms a problem, Grey works out where it sits (functional area, specific area), designs a student-sized FYP, explains "Why this FYP?" from stored evidence, and the student approves it or asks for up to 3 controlled redesigns (blueprint §16–18).
+
+| Layer | Detail |
+|---|---|
+| UI | `FunctionalAreaCard` (Industry → Branch → Functional area → Specific area → Problem + explanation), `FYPDirectionCard` (live checklist; failure → Try again; review: title, what you'll build, who uses it, input, output, main contribution, **Why this FYP?** with sources and links, **Approve this FYP** with confirm dialog, **Adjust** with 4 radio options + optional note ≤200 chars + "N of 3 redesigns left", version badge), `ApprovedFYPCard` — `Frontend/domains/fyp/components/`; `SelectedProblemCard` stays visible while the design starts |
+| Data source | `eventData.fyp` (fyp_direction_ready, fyp_design_failed after a redesign, fyp_direction_approved), `eventData.area` (area_classified), `brainSummary` (`functionalArea`, `specificArea`, `fypTitle`, …); parsed by `Frontend/domains/fyp/fypDesign.ts` |
+| Adapter actions | `selectProblem(id)` continues into `/fyp-design` automatically when the backend allows `designFYP`; `designFYP()` (retry); `adjustFYPDirection(adjustment, note?)`; `approveFYPDirection(designId)` — `Frontend/core/grey-agent/hooks.ts` |
+| API | `POST /projects/{id}/fyp-design` → **200** NDJSON stream; **404** unknown; **409** no problem chosen / already designed / already running. `POST /projects/{id}/fyp-design/adjust {adjustment, note?}` → **200** stream; **409** no draft / 3 redesigns used / running; **422** not a controlled option or note too long. `POST /projects/{id}/fyp-design/approve {design_id}` → **200** `fyp_direction_approved`; **409** not the current draft / no draft / redesign running. `GET /projects/{id}/fyp-design` → `FYPDesignResponse` (area, current design, Why this FYP?, redesigns used/left, latest run) — `Backend/app/api/fyp_design.py` |
+| Runner | `start_fyp_design()`, `start_fyp_redesign()` + `FYPDesignSession.events()`, `approve_fyp()` — `Backend/app/domains/fyp/workflows/fyp_design/runner.py`. Saves the area as soon as it's classified (a retry then skips it), saves each design version with the workflow's id, fails runs left "running", rebuilds the review pause from the Brain before every redesign/approval. |
+| Workflow | Separate graph `fyp_design`: `area_classification` → `fyp_design` → `fyp_review` (`interrupt`: approve → END, adjust → `fyp_design`; validates the controlled option and the limit) — `nodes.py`, `graph.py`, `state.py` |
+| Skills | `classify_area` (`fast_cheap`) and `design_fyp` (`structured_reasoning`) — `Backend/app/domains/fyp/skills/classify_area/`, `design_fyp/`; shared `ProblemBrief`, progress and text checks in `fyp_design_shared.py`. Checks: link, organization name, named technology/dataset/model/API (word list), too long, area = branch, specific = functional, unchanged redesign; one retry. Prompts `classify_area.v1`, `design_fyp.v1` with `ADJUSTMENT_REQUESTS` — `app/domains/fyp/prompts/`. Fake-mode answers in each skill's `fake.py`. |
+| Why this FYP? | Built by code in `workflows/fyp_design/view.py` from the selected problem (real-world problem, why it matters, observed solutions, cited sources with supporting points) + the design's `scope_reduction` |
+| Project Brain | `functional_area` (one per project), `fyp_design_run` (kind initial/adjustment, adjustment, note, status, provider/model/prompt version, error), `fyp_design` (version, status draft/superseded/approved, fields, adjustment, note, approved_at). Stages `PROBLEM_SELECTED` → `AREA_CLASSIFICATION` → `FYP_DESIGN` → `APPROVED_FYP`, each in the same commit as its data. Max 3 saved redesigns. |
+| Events | `fyp_design_started` → `fyp_design_progress` (classifying) → `area_classified` → `fyp_design_progress` ×3 (designing, checking, saving) → `fyp_direction_ready` (stage `FYP_DESIGN`, `awaiting_user`, allowed `approveFYPDirection` + `adjustFYPDirection` while redesigns are left, `data.fyp`). Redesign: started → progress ×3 → ready. Failure: `fyp_design_failed` — first design: `blocked`, allowed `designFYP`; redesign: `awaiting_user`, current design kept, allowed approve/adjust. Approval: `fyp_direction_approved` (stage `APPROVED_FYP`, `complete`, no actions). |
+| Tests | Backend: `test_brain_fyp_design.py` (26), `test_fyp_design_skills.py` (36), `test_fyp_design_workflow.py` (24), `tests/integration/test_fyp_design_api.py` (13). Frontend: adapter tests (7 new), `fypDesign.test.ts`, `FunctionalAreaCard.test.tsx`, `FYPDirectionCard.test.tsx`, `ApprovedFYPCard.test.tsx` |

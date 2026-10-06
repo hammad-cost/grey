@@ -26,7 +26,7 @@ def fake_area(llm_input: dict) -> dict:
     """Build an LLMAreaDraft-shaped reply from the problem in the request."""
     problem = llm_input.get("problem", {})
     functional, about = _AREAS.get(problem.get("task_type"), _AREAS["other"])
-    specific = " ".join(problem.get("title", "Problem Focus").split()[:6])
+    specific = " ".join(problem.get("title", "Problem Focus").split())[:80].strip()
     if specific.lower() == functional.lower():
         specific = f"{specific} Focus"
     return {

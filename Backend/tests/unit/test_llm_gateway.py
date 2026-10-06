@@ -356,3 +356,20 @@ def test_strict_schema_inlines_references_and_requires_every_field():
     assert item["required"] == ["ref", "note"]
     for keyword in ("minLength", "maxLength", "minItems", "maxItems", "default", "title"):
         assert keyword not in text
+
+
+def test_strict_schema_keeps_fields_named_like_keywords():
+    # A field called "title" was dropped with the "title" keyword, so Groq never
+    # sent it and every reply failed validation (live run, 2026-10-06).
+    schema = strict_json_schema(Answer)
+
+    assert list(schema["properties"]) == ["title", "score"]
+    assert schema["required"] == ["title", "score"]
+    assert "title" not in schema["properties"]["title"]      # the keyword is still removed
+
+
+def test_problem_draft_schema_asks_for_a_title():
+    from app.domains.fyp.skills.problem_extraction.schemas import LLMProblemDrafts
+
+    draft = strict_json_schema(LLMProblemDrafts)["properties"]["problems"]["items"]
+    assert "title" in draft["properties"] and "title" in draft["required"]

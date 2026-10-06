@@ -5,9 +5,9 @@
 | | |
 |---|---|
 | Current release | **0.4 — Real evidence**: Steps 1–6 and 8 done and committed together with 0.3; **Step 7 (live tests with real keys) pending** |
-| Current step | 0.4 Step 7 — live tests. Waiting for the student to add `GROQ_API_KEY`, `SERPAPI_API_KEY`, `TAVILY_API_KEY` (+ `LLM_MODE=live`, `SEARCH_PROVIDERS=serpapi,tavily`) to `Backend/.env` and say "go". |
-| Last completed step | 0.4 Step 8 — docs + full verification (567 backend + 1 skipped, 67 frontend, type-check clean, build OK) |
-| Next action | When keys are in: check only that they are set (never print values), confirm with the student, add `tests/live/test_search_live.py` (skipped unless `RUN_LIVE_SEARCH_TESTS=1`), run it, then one full live run via the API (real search + Groq) and review steps/sources/problems with the student; fix what the live run reveals; commit; ask before pushing. The 0.3 browser walk-through is also still pending. |
+| Current step | 0.4 Step 7 — **done**. Live tests pass (8/8) and one full live run (Healthcare → Clinical AI) went end to end: 21 real sources in ~25 s, 5 problem options from Groq gpt-oss-120b. |
+| Last completed step | 0.4 Step 7 — live fixes: (1) Google ignores `site:` → SerpAPI drops off-site results (`on_sites`), gateway falls back to Tavily; (2) `strict_json_schema` deleted any field *named* `title` → Groq never returned problem titles, every reply failed. Both fixed + tested (571 backend + 8 skipped). |
+| Next action | Student decides whether to improve evidence quality next (see current-state "Live run findings": generic dataset/government pages, only 1 startup, journal homepage as paper, Scholar author strings as organization, extraction ~50 s). Then the 0.3 browser walk-through; ask before pushing. |
 | Last commit | "Release 0.3 + 0.4: problem opportunities and real-evidence search" on `main` (run `git log -1`). **Not pushed** — ask before pushing. |
 
 ## Release 0.4 plan — Real evidence (approved 2026-10-06)

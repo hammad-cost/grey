@@ -13,7 +13,7 @@ import pytest
 
 from app.core.config.settings import Settings
 from app.core.tools import get_search_provider
-from app.core.tools.providers.common import make_result, parse_date, recency_bucket
+from app.core.tools.providers.common import make_result, on_sites, parse_date, recency_bucket
 from app.core.tools.providers.serpapi import SerpApiProvider
 from app.core.tools.providers.tavily import TavilySearchProvider
 from app.core.tools.search import (
@@ -133,6 +133,27 @@ async def test_serpapi_site_filters_and_recency():
     params = seen[0].url.params
     assert params["q"] == "maritime startups (site:ycombinator.com OR site:producthunt.com)"
     assert params["tbs"] == "qdr:y"
+
+
+async def test_serpapi_drops_results_from_other_sites():
+    # Live SerpAPI returned other sites even with site: in the query (2026-10-06).
+    page = {"organic_results": [
+        {"title": "Harbor AI", "link": "https://www.ycombinator.com/companies/harbor-ai", "snippet": "Port robots."},
+        {"title": "Fraud 101", "link": "https://blog.example.com/fraud", "snippet": "What is fraud?"},
+        {"title": "Fake", "link": "https://notycombinator.com/x", "snippet": "Look-alike domain."},
+    ]}
+    provider, _ = serp(ok(page))
+
+    results = await provider.search(SearchQuery(text="ports", include_domains=["ycombinator.com"]))
+
+    assert [r.title for r in results] == ["Harbor AI"]
+
+
+def test_on_sites_matches_the_site_and_its_subdomains():
+    assert on_sites("https://ycombinator.com/a", ["ycombinator.com"])
+    assert on_sites("https://www.ycombinator.com/a", ["YCombinator.com"])
+    assert not on_sites("https://notycombinator.com/a", ["ycombinator.com"])
+    assert not on_sites("https://ycombinator.com.evil.io/a", ["ycombinator.com"])
 
 
 async def test_serpapi_news_uses_the_news_tab():

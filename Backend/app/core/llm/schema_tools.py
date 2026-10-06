@@ -44,6 +44,12 @@ def _clean(node: Any, definitions: dict[str, Any]) -> Any:
         for key, value in node.items()
         if key not in _DROPPED_KEYWORDS
     }
+    if isinstance(node.get("properties"), dict):
+        # Keys under "properties" are field names, not keywords: a field may be
+        # called "title" or "format" and must survive (live Groq run, 2026-10-06).
+        cleaned["properties"] = {
+            name: _clean(value, definitions) for name, value in node["properties"].items()
+        }
     if cleaned.get("type") == "object" and "properties" in cleaned:
         cleaned["required"] = list(cleaned["properties"].keys())
         cleaned["additionalProperties"] = False

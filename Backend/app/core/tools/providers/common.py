@@ -7,6 +7,7 @@ skip anything unusable (no link, no text), instead of failing the search.
 """
 import re
 from datetime import date, datetime, timedelta
+from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
@@ -91,3 +92,9 @@ def recency_bucket(days: int | None) -> str | None:
     if days <= 31:
         return "month"
     return "year"
+
+
+def on_sites(url: str, domains: list[str]) -> bool:
+    """True if the link is on one of these sites or their subdomains (e.g. www.ycombinator.com)."""
+    host = (urlsplit(url).hostname or "").lower()
+    return any(host == d or host.endswith("." + d) for d in (d.strip().lower() for d in domains) if d)

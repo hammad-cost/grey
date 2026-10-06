@@ -20,7 +20,7 @@ For the quick recovery checkpoint (current step, next action), see `docs/resume.
 | 4 | Research plan v2 — six steps: discover startups (directories, Tier C) → **confirm on startup websites** (second hop, Tier A) → industry news → government (2 searches) → research papers (Scholar) → datasets. Search budget `RESEARCH_MAX_SEARCHES=15`; at most 5 startups confirmed. New evidence category `news`. | `queries.py`, `startups.py`, `skill.py` |
 | 5 | Research summary adds `startups_confirmed`; clear startup warning when a listed search provider has no key. | `skill.py`, `research_events.py`, `factory.py` |
 | 6 | UI: research card describes the six steps and shows found-by-type; View sources labels each source (Startup website / Startup directory / News / Research paper / Government / Dataset …); "Sample data" badge whenever search or LLM is fake. | `Frontend/domains/fyp/` |
-| 7 | **Pending:** live tests and one full live run (needs `SERPAPI_API_KEY`, `TAVILY_API_KEY`, `GROQ_API_KEY`). | — |
+| 7 | Live tests (`tests/live/test_search_live.py`) + one full live run; fixed SerpAPI `site:` and the strict-schema `title` bug | `app/core/tools/providers/`, `app/core/llm/schema_tools.py` |
 | 8 | Docs + full verification | `docs/` |
 
 **Mock search is still the default** (`SEARCH_PROVIDERS=mock`). Real search starts when `Backend/.env` has `SEARCH_PROVIDERS=serpapi,tavily` and the keys. Automated tests always use mock search and the fake LLM.
@@ -97,7 +97,7 @@ The journey stops at the chosen problem. Functional-area classification, FYP dir
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **567 passing, 1 skipped** (the live Groq test) |
+| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **571 passing, 8 skipped** (the live Groq + 7 live search tests) |
 | Backend live LLM | `$env:RUN_LIVE_LLM_TESTS="1"; ...pytest -m live_llm -s` | 1 test, needs `GROQ_API_KEY`; uses a little Groq quota |
 | Frontend (Vitest) | `cd Frontend; npm test` | **67 passing** |
 | Frontend type-check | `npm run type-check` | 0 errors |
@@ -154,7 +154,8 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 
 7. **Groq free tier is small** (about 8,000 tokens/minute and 200,000/day per model). The context is kept small to fit; heavy testing can hit the daily limit (Grey then falls back to the second model, then shows "try again").
 
-8. **Real search is untested against the live services yet** (Step 7 of 0.4). The adapters are built from the vendors' docs and tested against recorded-shape responses; the first live run may need small fixes.
+8. **Real search passed its live tests on 2026-10-06** (`$env:RUN_LIVE_SEARCH_TESTS="1"; ...pytest -m live_search -s`, about 7 credits). Google does not always obey `site:`, so SerpAPI drops off-site results and the gateway falls back to Tavily. Tavily gives no publisher name (the skill uses the site host instead). A full live run passed on 2026-10-06 after fixing `strict_json_schema` (it deleted fields *named* `title`, so Groq never sent problem titles).
+9. **Live run findings (Healthcare → Clinical AI, not yet fixed):** datasets step returned generic pages (data.gov home/about/metrics, zenodo.org home); government step returned healthcare.gov (insurance marketplace) instead of FDA/NIH/ARPA-H material; startups step found only one 2022 CB Insights list and confirmed none; an MDPI journal homepage was stored as a research paper; Scholar "organization" is the raw author/venue line (e.g. "DK Ryan, … - British Journal of …, 2024 - Wiley"); problem extraction takes ~50 s and 3 of 5 problems rest on one source.
 
 9. **Second-hop startup matching is strict.** A startup counts as confirmed only if its name appears in the website address, so some real startups may be missed (fewer Tier A sources), but a wrong site is not marked official.
 

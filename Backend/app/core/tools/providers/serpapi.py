@@ -8,6 +8,9 @@ Which SerpAPI option is used depends on the query's focus:
 
 include_domains becomes "(site:a OR site:b)" in the query; recency_days becomes
 Google's tbs=qdr:d/w/m/y (or as_ylo, the start year, for Scholar).
+Google doesn't always obey site: (the live test, 2026-10-06, got only other
+sites back), so off-site results are also dropped here. If none are left the
+search returns [] and the gateway asks the next provider.
 
 Errors (SerpAPI docs, checked 2026-10-06):
   401, 403 → SearchAuthError
@@ -22,7 +25,7 @@ from datetime import date
 
 import httpx
 
-from app.core.tools.providers.common import make_result, parse_date, recency_bucket
+from app.core.tools.providers.common import make_result, on_sites, parse_date, recency_bucket
 from app.core.tools.search import (
     SearchAuthError,
     SearchBadRequest,
@@ -140,7 +143,10 @@ class SerpApiProvider(SearchProvider):
             items = data.get("organic_results") or []
             build = self._web_item
         results = [build(item) for item in items if isinstance(item, dict)]
-        return [r for r in results if r is not None]
+        results = [r for r in results if r is not None]
+        if query.include_domains and query.focus != SearchFocus.RESEARCH:
+            results = [r for r in results if on_sites(r.url, query.include_domains)]
+        return results
 
     def _web_item(self, item: dict) -> SearchResult | None:
         return make_result(

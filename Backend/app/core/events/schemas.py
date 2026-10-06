@@ -43,9 +43,16 @@ class EventType(str, Enum):
     PROBLEM_EXTRACTION_FAILED = "problem_extraction_failed"
     PROBLEM_SELECTED = "problem_selected"
 
+    # Release 0.5 — from problem to FYP. Safe activity only, never reasoning.
+    FYP_DESIGN_STARTED = "fyp_design_started"
+    FYP_DESIGN_PROGRESS = "fyp_design_progress"
+    AREA_CLASSIFIED = "area_classified"
+    FYP_DIRECTION_READY = "fyp_direction_ready"
+    FYP_DESIGN_FAILED = "fyp_design_failed"
+    FYP_DIRECTION_APPROVED = "fyp_direction_approved"
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
-    FYP_DIRECTION_READY = "fyp_direction_ready"
     DATASET_OPTIONS_READY = "dataset_options_ready"
     ARCHITECTURE_READY = "architecture_ready"
     FEASIBILITY_READY = "feasibility_ready"
@@ -81,7 +88,9 @@ class AllowedAction(str, Enum):
     EXTRACT_PROBLEMS = "extractProblems"   # find (or retry finding) problem options from the evidence
     SELECT_PROBLEM = "selectProblem"
     REQUEST_MORE_PROBLEMS = "requestMoreProblems"
+    DESIGN_FYP = "designFYP"                       # turn the chosen problem into an FYP (or retry)
     APPROVE_FYP_DIRECTION = "approveFYPDirection"
+    ADJUST_FYP_DIRECTION = "adjustFYPDirection"    # one controlled redesign (up to 3)
     MODIFY_SCOPE = "modifyScope"
     SELECT_DATASET = "selectDataset"
     REQUEST_DATASET_ALTERNATIVE = "requestDatasetAlternative"

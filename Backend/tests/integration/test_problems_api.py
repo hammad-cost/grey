@@ -197,7 +197,7 @@ async def test_select_problem(client: AsyncClient):
     assert event["type"] == "problem_selected"
     assert event["stage"] == "PROBLEM_SELECTED"
     assert event["status"] == "complete"
-    assert event["allowed_actions"] == []
+    assert event["allowed_actions"] == ["designFYP"]      # Release 0.5: the FYP design comes next
     assert event["data"]["problem"]["id"] == chosen["id"]
     assert event["brain_patch"]["selected_problem_title"] == chosen["title"]
 

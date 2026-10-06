@@ -144,7 +144,10 @@ class ProblemEventBuilder:
 
 
 def problem_selected_event(workspace_id: str, problem: StoredProblemCandidate) -> GreyEvent:
-    """The student's choice is saved. The discovery stage ends here (Release 0.3)."""
+    """
+    The student's choice is saved and the discovery stage ends. Next, Grey turns
+    the problem into an FYP (the FYP Design workflow, Release 0.5).
+    """
     return build_event(
         type=EventType.PROBLEM_SELECTED,
         workspace_id=workspace_id,
@@ -157,5 +160,5 @@ def problem_selected_event(workspace_id: str, problem: StoredProblemCandidate) -
             "selected_problem_id": problem.id,
             "selected_problem_title": problem.title,
         },
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.DESIGN_FYP],
     )

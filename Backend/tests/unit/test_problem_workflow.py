@@ -393,7 +393,7 @@ async def test_choosing_a_problem_resumes_the_workflow_and_saves_the_choice(repo
     assert event.type == EventType.PROBLEM_SELECTED
     assert event.stage == WorkflowState.PROBLEM_SELECTED.value
     assert event.status == EventStatus.COMPLETE
-    assert event.allowed_actions == []
+    assert event.allowed_actions == [AllowedAction.DESIGN_FYP]       # Release 0.5: the FYP design comes next
     assert event.data["problem"]["id"] == chosen.id
     assert event.brain_patch == {
         "workflow_state": "PROBLEM_SELECTED",

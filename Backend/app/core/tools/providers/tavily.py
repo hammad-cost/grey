@@ -38,6 +38,9 @@ DEFAULT_URL = "https://api.tavily.com/search"
 class TavilySearchProvider(SearchProvider):
     name = "tavily"
 
+    def keeps_to_sites(self, query: SearchQuery) -> bool:
+        return True                         # Tavily applies include_domains itself
+
     def __init__(
         self,
         api_key: str,

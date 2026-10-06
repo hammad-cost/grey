@@ -352,3 +352,14 @@ def test_no_warning_when_all_keys_are_set(caplog):
     with caplog.at_level("WARNING", logger="grey.search"):
         get_search_provider(Settings(_env_file=None, search_providers="serpapi", serpapi_api_key="k"))
     assert not [r for r in caplog.records if r.name == "grey.search"]
+
+
+def test_which_providers_keep_to_the_requested_sites():
+    sites = ["ycombinator.com"]
+    serp_provider = SerpApiProvider("key")
+    tavily_provider = TavilySearchProvider("key")
+
+    assert tavily_provider.keeps_to_sites(SearchQuery(text="x", include_domains=sites))
+    # Plain Google often ignores site:, but Scholar only returns papers anyway.
+    assert not serp_provider.keeps_to_sites(SearchQuery(text="x", include_domains=sites))
+    assert serp_provider.keeps_to_sites(SearchQuery(text="x", focus=SearchFocus.RESEARCH, include_domains=sites))

@@ -148,6 +148,14 @@ class SearchProvider(ABC):
     # Short identifier saved with every piece of evidence, e.g. "mock" or "tavily".
     name: str
 
+    def keeps_to_sites(self, query: SearchQuery) -> bool:
+        """
+        True if this provider reliably returns only query.include_domains sites
+        for this query. The gateway asks such providers first for site-limited
+        searches. Default: no (most web search engines treat sites as a hint).
+        """
+        return False
+
     @abstractmethod
     async def search(self, query: SearchQuery) -> list[SearchResult]:
         """

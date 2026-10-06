@@ -134,15 +134,19 @@ async def test_runs_the_research_plan_in_order():
     ]
     assert all(q.text.startswith('"Navy" Defense') for q in search.queries)
     assert "ycombinator.com" in search.queries[0].include_domains
+    assert "cbinsights.com" not in search.queries[0].include_domains     # list sites: no names to read
     assert "arxiv.org" in search.queries[4].include_domains
     assert "kaggle.com" in search.queries[5].include_domains
+    assert "gov" in search.queries[2].include_domains and "who.int" in search.queries[3].include_domains
     assert output.queries_run == [q.text for q in search.queries]
 
 
-async def test_max_sources_per_category_is_passed_to_searches():
+async def test_searches_ask_for_more_results_than_are_kept():
+    # A search costs the same for 5 or 20 results; extra ones give the filters choices.
     search = FakeSearch()
     await run(ResearchEvidenceSkill(search), NAVY.model_copy(update={"max_sources_per_category": 3}))
-    assert {q.max_results for q in search.queries} == {3}
+    assert search.queries[0].max_results == 20                      # startup discovery
+    assert {q.max_results for q in search.queries[1:]} == {10}
 
 
 # ── Normalization: de-duplication, caps, ranking ──────────────────────────────

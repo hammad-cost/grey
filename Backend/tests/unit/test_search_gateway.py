@@ -231,6 +231,48 @@ async def test_no_providers_configured_raises_unavailable(time_):
         await gateway([], time_).search(QUERY)
 
 
+# ── Site-limited searches (Release 0.4.1) ─────────────────────────────────────
+
+class SiteKeepingProvider(ScriptedProvider):
+    """Like Tavily: returns only the requested sites, so it should be asked first."""
+
+    def keeps_to_sites(self, query: SearchQuery) -> bool:
+        return True
+
+
+SITE_QUERY = SearchQuery(text='"Navy" startups', include_domains=["ycombinator.com"])
+
+
+async def test_site_limited_search_asks_the_site_keeping_provider_first(time_):
+    serp = ScriptedProvider("serpapi", [[result(1)]])
+    tav = SiteKeepingProvider("tavily", [[result(2)]])
+
+    results = await gateway([serp, tav], time_).search(SITE_QUERY)
+
+    assert [r.title for r in results] == ["Result 2"]
+    assert (serp.calls, tav.calls) == (0, 1)
+
+
+async def test_site_limited_search_still_falls_back_to_the_other_provider(time_):
+    serp = ScriptedProvider("serpapi", [[result(1)]])
+    tav = SiteKeepingProvider("tavily", [[]])
+
+    results = await gateway([serp, tav], time_).search(SITE_QUERY)
+
+    assert [r.title for r in results] == ["Result 1"]
+    assert (serp.calls, tav.calls) == (1, 1)
+
+
+async def test_unlimited_search_keeps_the_configured_order(time_):
+    serp = ScriptedProvider("serpapi", [[result(1)]])
+    tav = SiteKeepingProvider("tavily", [[result(2)]])
+
+    results = await gateway([serp, tav], time_).search(QUERY)
+
+    assert [r.title for r in results] == ["Result 1"]
+    assert tav.calls == 0
+
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 async def test_logs_each_attempt_without_the_query_text(time_, caplog):

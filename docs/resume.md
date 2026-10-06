@@ -4,11 +4,24 @@
 
 | | |
 |---|---|
-| Current release | **0.4 — Real evidence**: Steps 1–6 and 8 done and committed together with 0.3; **Step 7 (live tests with real keys) pending** |
-| Current step | 0.4 Step 7 — **done**. Live tests pass (8/8) and one full live run (Healthcare → Clinical AI) went end to end: 21 real sources in ~25 s, 5 problem options from Groq gpt-oss-120b. |
-| Last completed step | 0.4 Step 7 — live fixes: (1) Google ignores `site:` → SerpAPI drops off-site results (`on_sites`), gateway falls back to Tavily; (2) `strict_json_schema` deleted any field *named* `title` → Groq never returned problem titles, every reply failed. Both fixed + tested (571 backend + 8 skipped). |
-| Next action | Student decides whether to improve evidence quality next (see current-state "Live run findings": generic dataset/government pages, only 1 startup, journal homepage as paper, Scholar author strings as organization, extraction ~50 s). Then the 0.3 browser walk-through; ask before pushing. |
+| Current release | **0.5 — planning.** 0.4.1 (evidence quality) is **paused after Step 1** by the student's choice ("improve evidence in future"); Steps 2–4 remain below. |
+| Current step | Write the 0.5 plan ("From problem to FYP") for the student to approve. No 0.5 code yet. |
+| Last completed step | 0.4.1 Step 1 — search targeting (Tavily first for site-limited searches, government site list, startup profile sites, 10/20 results per search). Government live ✅; startup re-check (1 search) never run — YC category pages gave 1 name before the 10/20 change. |
+| Next action | Student approves the 0.5 plan; then build 0.5 step by step with "go" between steps. Resume 0.4.1 Step 2 later. |
 | Last commit | "Release 0.3 + 0.4: problem opportunities and real-evidence search" on `main` (run `git log -1`). **Not pushed** — ask before pushing. |
+
+## Release 0.4.1 plan — Evidence quality (approved 2026-10-06; PAUSED after Step 1)
+
+Live run (Healthcare → Clinical AI) findings are in current-state.md item 9.
+
+| Step | What | Status |
+|---|---|---|
+| 1 ✅ | Site-limited searches ask providers that keep to the sites first (`SearchProvider.keeps_to_sites(query)`: Tavily yes; SerpAPI only for Scholar/RESEARCH); government step limited to `GOVERNMENT_SEARCH_SITES`; discovery searches only `STARTUP_PROFILE_SITES`; `RESULTS_PER_SEARCH=10`, `DISCOVERY_RESULTS=20`; 2 live tests | done (startup live re-check not run) |
+| 2 | Topic + step-fit filters in research_evidence (no AI): result must mention the branch phrase or a main branch word; drop home/about pages (except a startup's own site); each step keeps only its kind (government / datasets / research); drop same-title duplicates (EU page came back in 2 languages) | ⬜ |
+| 3 | Labels: news-step results from unlisted sites → News Tier C; Scholar organization = venue, or publisher when the venue is cut short ("…") or the last part has spaces | ⬜ |
+| 4 | Live check: re-run Healthcare → Clinical AI (~15 searches + Groq), compare before/after; docs; commit (no push) | ⬜ |
+
+Out of scope for 0.4.1: ≥2 sources per problem, problem-finding speed (~50 s) — judge after Step 4.
 
 ## Release 0.4 plan — Real evidence (approved 2026-10-06)
 

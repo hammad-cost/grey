@@ -79,3 +79,40 @@ async def test_gateway_from_settings_searches_for_real():
     _show(results)
     assert results
     assert all(result.provider in {"serpapi", "tavily"} for result in results)
+
+
+async def test_government_search_stays_on_government_sites():
+    # Release 0.4.1: does Tavily accept bare endings like "gov" in include_domains?
+    from app.domains.fyp.skills.research_evidence.sources import GOVERNMENT_SEARCH_SITES
+    from app.core.tools.providers.common import on_sites
+
+    provider = TavilySearchProvider(_key("tavily_api_key"))
+    results = await provider.search(SearchQuery(
+        text='"Clinical AI" Healthcare government initiative programme',
+        focus=SearchFocus.GOVERNMENT, include_domains=GOVERNMENT_SEARCH_SITES, max_results=5,
+    ))
+
+    _show(results)
+    assert results
+    assert all(on_sites(result.url, GOVERNMENT_SEARCH_SITES) for result in results)
+
+
+async def test_startup_directory_search_finds_directory_pages():
+    # Release 0.4.1: the live run found only one startup list; Tavily now goes first,
+    # and only directories with one page per startup are searched.
+    from app.domains.fyp.skills.research_evidence.sources import STARTUP_PROFILE_SITES
+    from app.domains.fyp.skills.research_evidence.startups import startup_names
+    from app.core.tools.providers.common import on_sites
+
+    _key("tavily_api_key")
+    gateway = get_search_provider(Settings(search_providers="serpapi,tavily"))
+    results = await gateway.search(SearchQuery(
+        text='"Clinical AI" Healthcare startups', focus=SearchFocus.COMPANIES,
+        include_domains=STARTUP_PROFILE_SITES, max_results=20,
+    ))
+
+    _show(results)
+    names = startup_names(results, "Healthcare", "Clinical AI", limit=5)
+    print("\n  startup names read:", names)
+    assert all(on_sites(result.url, STARTUP_PROFILE_SITES) for result in results)
+    assert len(names) >= 2

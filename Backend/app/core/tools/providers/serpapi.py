@@ -65,6 +65,11 @@ class SerpApiProvider(SearchProvider):
         self._timeout = timeout_seconds
         self._client = http_client          # tests pass a client with a fake transport
 
+    def keeps_to_sites(self, query: SearchQuery) -> bool:
+        # Google Scholar only returns papers, which is what a research site list asks for.
+        # Plain Google often ignores site: (live run, 2026-10-06).
+        return query.focus == SearchFocus.RESEARCH
+
     async def search(self, query: SearchQuery) -> list[SearchResult]:
         params = self._params(query)
         try:

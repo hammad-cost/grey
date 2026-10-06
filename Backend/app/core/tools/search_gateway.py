@@ -4,7 +4,9 @@ SearchGateway — several search providers behind one SearchProvider.
 Skills keep calling `search(query)` exactly as before; the gateway decides
 which real service answers it:
 
-  1. try the providers in the configured order (e.g. SerpAPI, then Tavily),
+  1. try the providers in the configured order (e.g. SerpAPI, then Tavily) —
+     for a search limited to some sites, providers that filter sites
+     themselves (Tavily) go first,
   2. retry short-lived failures (rate limit, timeout, server error) with a
      growing pause, honouring the provider's retry-after,
   3. fall back to the next provider when one can't answer,
@@ -120,7 +122,7 @@ class SearchGateway(SearchProvider):
         causes: list[str] = []
         answered = False
 
-        for provider in self.providers:
+        for provider in self._order_for(query):
             if not self.health.is_usable(provider.name):
                 continue
             results = await self._try_provider(provider, query, causes)
@@ -138,6 +140,16 @@ class SearchGateway(SearchProvider):
             + (f" (tried: {', '.join(causes)})." if causes else " (none configured or all resting)."),
             causes=causes,
         )
+
+    def _order_for(self, query: SearchQuery) -> list[SearchProvider]:
+        """
+        The configured order — except for site-limited searches, where providers
+        that keep to the sites themselves go first. Google (SerpAPI) often ignores
+        site: filters, so its answer is mostly dropped (live run, 2026-10-06).
+        """
+        if not query.include_domains:
+            return self.providers
+        return sorted(self.providers, key=lambda p: not p.keeps_to_sites(query))   # stable sort
 
     async def _try_provider(
         self, provider: SearchProvider, query: SearchQuery, causes: list[str]

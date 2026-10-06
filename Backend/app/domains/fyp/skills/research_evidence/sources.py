@@ -20,18 +20,29 @@ Tier reminder:
 
 # Startup / company directories and accelerator lists. Great for FINDING startups;
 # the startup's own website (found in the second search hop) is the Tier A evidence.
-STARTUP_DIRECTORIES = [
+
+# Directories with one page per startup, titled with its name
+# ("Finic: The AI fraud hunter | Y Combinator"). "Discovering startups" searches these.
+STARTUP_PROFILE_SITES = [
     "ycombinator.com",
     "producthunt.com",
     "f6s.com",
     "crunchbase.com",
     "dealroom.co",
-    "startupblink.com",
     "wellfound.com",
     "tracxn.com",
+]
+
+# Sites that mostly publish lists and market maps ("90 startups making noise…").
+# No startup name can be read from such a title, so they are not searched for
+# discovery (live run, 2026-10-06) — but they still count as Tier C if found.
+STARTUP_LIST_SITES = [
     "cbinsights.com",
+    "startupblink.com",
     "eu-startups.com",
 ]
+
+STARTUP_DIRECTORIES = STARTUP_PROFILE_SITES + STARTUP_LIST_SITES
 
 # Blogs, forums and social media: leads only.
 DISCUSSION_SITES = [
@@ -137,6 +148,25 @@ INTERNATIONAL_BODIES = [
     "itu.int",
     "imf.org",
     "wto.org",
+]
+
+# Where the government step searches (Release 0.4.1). Without a limit, Google
+# returned an insurance marketplace and law-firm blogs for "government AI".
+# "gov" covers every *.gov site; ".gov.<country>" sites must be listed here.
+GOVERNMENT_SEARCH_SITES = [
+    "gov",
+    "mil",
+    "gov.uk",
+    "gov.au",
+    "gov.in",
+    "gov.pk",
+    "gov.sg",
+    "gc.ca",
+    "europa.eu",
+    "who.int",
+    "worldbank.org",
+    "oecd.org",
+    "un.org",
 ]
 
 # ── Datasets ──────────────────────────────────────────────────────────────────

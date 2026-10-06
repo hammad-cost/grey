@@ -107,7 +107,7 @@ class ResearchEvidenceSkill(Skill):
                     high_quality_sources=sum(1 for s in kept if s.evidence_tier == EvidenceTier.A),
                 ))
 
-        plan = build_research_plan(input.industry, input.branch, input.max_sources_per_category)
+        plan = build_research_plan(input.industry, input.branch)
         # Searches the later steps need, so the second hop never uses up their budget.
         later_searches = {
             step.id: sum(len(s.queries) for s in plan[index + 1:])

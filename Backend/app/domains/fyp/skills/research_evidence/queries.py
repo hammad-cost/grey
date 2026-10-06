@@ -25,10 +25,11 @@ from app.core.brain.schemas import ResearchCategory
 from app.core.tools.search import SearchFocus, SearchQuery
 from app.domains.fyp.skills.research_evidence.sources import (
     COMMUNITY_DATASET_SITES,
+    GOVERNMENT_SEARCH_SITES,
     OFFICIAL_DATA_PORTALS,
     PEER_REVIEWED_PUBLISHERS,
     PREPRINT_SERVERS,
-    STARTUP_DIRECTORIES,
+    STARTUP_PROFILE_SITES,
 )
 
 # Step ids (also used as the checklist ids in research events).
@@ -40,6 +41,13 @@ RESEARCH_PAPERS = "research_papers"
 DATASETS = "datasets"
 
 EVALUATING_LABEL = "Evaluating evidence quality"
+
+# Results asked for per search. More than the few kept per step, so the
+# filters have choices — a search costs the same credit for 5 or 20 results.
+RESULTS_PER_SEARCH = 10
+# Startup discovery needs many profile pages to read names from (directory
+# searches also return category pages like "Healthcare Startups funded by YC").
+DISCOVERY_RESULTS = 20
 
 # Most startups confirmed on their own website per research run.
 MAX_STARTUPS_TO_CONFIRM = 5
@@ -58,15 +66,15 @@ class ResearchStep:
 # (step id, category, student-facing label, [(query template, focus, sites to search), …])
 _PLAN = [
     (DISCOVER_STARTUPS, ResearchCategory.ORGANIZATIONS, "Discovering startups", [
-        ('"{branch}" {industry} startups', SearchFocus.COMPANIES, STARTUP_DIRECTORIES),
+        ('"{branch}" {industry} startups', SearchFocus.COMPANIES, STARTUP_PROFILE_SITES),
     ]),
     (CONFIRM_STARTUPS, ResearchCategory.ORGANIZATIONS, "Confirming on startup websites", []),
     (INDUSTRY_NEWS, ResearchCategory.NEWS, "Reading industry news", [
         ('"{branch}" {industry} technology', SearchFocus.NEWS, []),
     ]),
     (GOVERNMENT, ResearchCategory.OFFICIAL_SOURCES, "Reviewing government evidence", [
-        ('"{branch}" {industry} government initiative programme', SearchFocus.GOVERNMENT, []),
-        ('"{branch}" {industry} government report strategy', SearchFocus.GOVERNMENT, []),
+        ('"{branch}" {industry} government initiative programme', SearchFocus.GOVERNMENT, GOVERNMENT_SEARCH_SITES),
+        ('"{branch}" {industry} government report strategy', SearchFocus.GOVERNMENT, GOVERNMENT_SEARCH_SITES),
     ]),
     (RESEARCH_PAPERS, ResearchCategory.RESEARCH, "Checking research papers", [
         # Google Scholar answers this directly; the site list helps providers without Scholar.
@@ -82,7 +90,7 @@ _PLAN = [
 STEP_LABELS: dict[str, str] = {step_id: label for step_id, _, label, _ in _PLAN}
 
 
-def build_research_plan(industry: str, branch: str, max_results: int) -> list[ResearchStep]:
+def build_research_plan(industry: str, branch: str) -> list[ResearchStep]:
     """Return the research steps in order. The confirm step starts empty (filled from step 1)."""
     return [
         ResearchStep(
@@ -93,7 +101,7 @@ def build_research_plan(industry: str, branch: str, max_results: int) -> list[Re
                 SearchQuery(
                     text=template.format(industry=industry, branch=branch),
                     focus=focus,
-                    max_results=max_results,
+                    max_results=DISCOVERY_RESULTS if step_id == DISCOVER_STARTUPS else RESULTS_PER_SEARCH,
                     include_domains=list(sites),
                 )
                 for template, focus, sites in templates

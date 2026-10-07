@@ -8,12 +8,14 @@ from pydantic import BaseModel
 from app.core.brain.schemas import (
     FYPDesignRun,
     ProblemRun,
+    ProjectDefinitionRun,
     ResearchRun,
     StoredEvidenceSource,
     StoredProblemCandidate,
     WorkflowState,
 )
 from app.domains.fyp.workflows.fyp_design.view import FYPDesignView
+from app.domains.fyp.workflows.project_definition.view import ProjectDefinitionView
 
 
 class EvidenceListResponse(BaseModel):
@@ -37,3 +39,11 @@ class FYPDesignResponse(BaseModel):
     workflow_state: WorkflowState
     fyp: FYPDesignView | None = None             # None until a problem has been chosen
     latest_run: FYPDesignRun | None = None       # the latest design attempt, None if never run
+
+
+class ProjectDefinitionResponse(BaseModel):
+    """Body for GET /projects/{workspace_id}/project-definition (Release 0.6)."""
+    workspace_id: str
+    workflow_state: WorkflowState
+    definition: ProjectDefinitionView | None = None        # None until the FYP is approved
+    latest_run: ProjectDefinitionRun | None = None         # the latest attempt, None if never run

@@ -176,6 +176,51 @@ const fypApproved = fypEvent("fyp_direction_approved", {
   brain_patch: { workflow_state: "APPROVED_FYP", fyp_design_status: "approved" },
 });
 
+const fypApprovedDefineNext: GreyEvent = { ...fypApproved, allowed_actions: ["defineProject"] };
+
+/** A project definition event (Release 0.6). */
+function definitionEvent(type: string, extra: Partial<GreyEvent> = {}): GreyEvent {
+  return {
+    type,
+    workspace_id: "w_123",
+    domain: "fyp",
+    workflow: "project_definition",
+    stage: "APPROVED_FYP",
+    status: "running",
+    data: { label: `${type} label`, completed_steps: 1, total_steps: 3 },
+    brain_patch: {},
+    allowed_actions: [],
+    ...extra,
+  };
+}
+
+const definitionStarted = definitionEvent("project_definition_started", {
+  brain_patch: { project_definition_status: "running" },
+});
+const definitionReady = definitionEvent("project_definition_ready", {
+  stage: "SCOPE",
+  status: "awaiting_user",
+  brain_patch: {
+    workflow_state: "SCOPE",
+    project_definition_id: "def-1",
+    project_definition_status: "draft",
+    core_feature_count: 3,
+  },
+  allowed_actions: ["approveScope", "modifyScope"],
+});
+const scopeUpdated = definitionEvent("scope_updated", {
+  stage: "SCOPE",
+  status: "awaiting_user",
+  data: { moved: "Report export" },
+  brain_patch: { core_feature_count: 4 },
+  allowed_actions: ["approveScope", "modifyScope"],
+});
+const scopeApproved = definitionEvent("scope_approved", {
+  stage: "SCOPE_APPROVED",
+  status: "complete",
+  brain_patch: { workflow_state: "SCOPE_APPROVED", project_definition_status: "approved" },
+});
+
 /** A streamed reply with these events, one JSON per line. */
 function streamOf(...events: GreyEvent[]) {
   return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
@@ -187,7 +232,7 @@ function Probe() {
   const { error } = useGreyAgent();
   const {
     startProject, selectIndustry, selectBranch, startResearch, extractProblems, selectProblem,
-    designFYP, adjustFYPDirection, approveFYPDirection,
+    designFYP, adjustFYPDirection, approveFYPDirection, defineProject, moveScopeItem, approveScope,
   } = useGreyActions();
   return (
     <>
@@ -201,6 +246,9 @@ function Probe() {
       <button onClick={() => adjustFYPDirection("make_simpler", "  For port staff ").catch(() => {})}>adjust</button>
       <button onClick={() => adjustFYPDirection("reduce_complexity", "   ").catch(() => {})}>adjust no note</button>
       <button onClick={() => approveFYPDirection("d-1").catch(() => {})}>approve</button>
+      <button onClick={() => defineProject().catch(() => {})}>define project</button>
+      <button onClick={() => moveScopeItem("s-4", "core").catch(() => {})}>move to core</button>
+      <button onClick={() => approveScope("def-1").catch(() => {})}>approve scope</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -587,5 +635,105 @@ describe("GreyAgentProvider", () => {
     expect(url).toMatch(/\/projects\/w_123\/fyp-design\/approve$/);
     expect(JSON.parse(options.body)).toEqual({ design_id: "d-1" });
     expect(readState().brainSummary).toMatchObject({ fypDesignStatus: "approved", workflowState: "APPROVED_FYP" });
+  });
+
+  it("approveFYPDirection defines the project straight away when the backend allows it", async () => {
+    replyWith(projectCreated);
+    replyWith(fypApprovedDefineNext);
+    fetchMock.mockResolvedValueOnce(streamOf(definitionStarted, definitionReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("approve"));
+    await waitFor(() => expect(readState().currentStage).toBe("SCOPE"));
+
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/project-definition$/);
+    expect(fetchMock.mock.calls[2][1].method).toBe("POST");
+    const state = readState();
+    expect(state.allowedActions).toEqual(["approveScope", "modifyScope"]);
+    expect(state.brainSummary).toMatchObject({
+      fypDesignStatus: "approved",
+      projectDefinitionId: "def-1",
+      projectDefinitionStatus: "draft",
+      coreFeatureCount: 3,
+      workflowState: "SCOPE",
+    });
+  });
+
+  it("defineProject retries the definition on its own", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(definitionStarted, definitionReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("define project"));
+    await waitFor(() => expect(readState().currentStage).toBe("SCOPE"));
+
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/project-definition$/);
+  });
+
+  it("defineProject shows an error if the stream stops early", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(definitionStarted));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("define project"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("error").textContent).toMatch(/connection to Grey was lost during defining your project/)
+    );
+  });
+
+  it("moveScopeItem posts the feature and its new list", async () => {
+    replyWith(projectCreated);
+    replyWith(scopeUpdated);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("move to core"));
+    await waitFor(() => expect(readState().lastEventType).toBe("scope_updated"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/scope\/move$/);
+    expect(JSON.parse(options.body)).toEqual({ item_id: "s-4", to: "core" });
+    expect(readState().brainSummary).toMatchObject({ coreFeatureCount: 4 });
+  });
+
+  it("moveScopeItem shows the backend's message when a scope rule is broken", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce({
+      ok: false, status: 409, statusText: "Conflict",
+      json: async () => ({ detail: "Core scope needs at least 2 features." }),
+    });
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("move to core"));
+
+    await waitFor(() => expect(screen.getByTestId("error").textContent).toBe("Core scope needs at least 2 features."));
+  });
+
+  it("approveScope posts the definition id and finishes at SCOPE_APPROVED", async () => {
+    replyWith(projectCreated);
+    replyWith(scopeApproved);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("approve scope"));
+    await waitFor(() => expect(readState().currentStage).toBe("SCOPE_APPROVED"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/scope\/approve$/);
+    expect(JSON.parse(options.body)).toEqual({ definition_id: "def-1" });
+    expect(readState().brainSummary).toMatchObject({
+      projectDefinitionStatus: "approved", workflowState: "SCOPE_APPROVED",
+    });
   });
 });

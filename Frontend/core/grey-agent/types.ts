@@ -46,6 +46,10 @@ export type WorkspaceBrainSummary = {
   fypDesignId?: string;
   fypTitle?: string;
   fypAdjustmentsLeft?: number;
+  /** Project definition and scope (Release 0.6): "running" | "draft" | "approved" | "failed". */
+  projectDefinitionStatus?: string;
+  projectDefinitionId?: string;
+  coreFeatureCount?: number;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -116,6 +120,9 @@ export const Actions = {
   DESIGN_FYP: "designFYP",
   APPROVE_FYP_DIRECTION: "approveFYPDirection",
   ADJUST_FYP_DIRECTION: "adjustFYPDirection",
+  DEFINE_PROJECT: "defineProject",
+  MODIFY_SCOPE: "modifyScope",
+  APPROVE_SCOPE: "approveScope",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

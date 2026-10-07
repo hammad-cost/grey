@@ -42,12 +42,15 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
     fyp_design_status: "fypDesignStatus",
     fyp_design_id: "fypDesignId",
     fyp_title: "fypTitle",
+    project_definition_status: "projectDefinitionStatus",
+    project_definition_id: "projectDefinitionId",
   } as const;
   const numberKeys = {
     evidence_count: "evidenceCount",
     high_quality_evidence_count: "highQualityEvidenceCount",
     problem_option_count: "problemOptionCount",
     fyp_adjustments_left: "fypAdjustmentsLeft",
+    core_feature_count: "coreFeatureCount",
   } as const;
 
   const summary: WorkspaceBrainSummary = {};

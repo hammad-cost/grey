@@ -50,6 +50,7 @@ async function errorFromResponse(response: Response): Promise<Error> {
 const RESEARCH_END_EVENTS = ["research_completed", "research_failed"];
 const PROBLEM_END_EVENTS = ["problem_options_ready", "problem_extraction_failed"];
 const FYP_DESIGN_END_EVENTS = ["fyp_direction_ready", "fyp_design_failed"];
+const DEFINITION_END_EVENTS = ["project_definition_ready", "project_definition_failed"];
 
 /**
  * POST to a streaming endpoint (with an optional JSON body) and apply every
@@ -278,14 +279,74 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  /** Approve the current FYP design (a mandatory decision). Release 0.5 ends here. */
+  /**
+   * Approve the current FYP design (a mandatory decision), then — when the
+   * backend says so (fyp_direction_approved allows "defineProject") — write the
+   * project definition and scope straight away (Release 0.6). Resolves with the
+   * final event (project_definition_ready or project_definition_failed, or
+   * fyp_direction_approved).
+   */
   const approveFYPDirection = useCallback(
     (designId: string) =>
       run(async () => {
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${workspaceId}/fyp-design/approve`,
+          { method: "POST", body: JSON.stringify({ design_id: designId }) }
+        );
+        applyEvent(event);
+        if (!event.allowed_actions.includes(Actions.DEFINE_PROJECT)) return event;
+
+        return runEventStream(
+          `/projects/${workspaceId}/project-definition`, DEFINITION_END_EVENTS, applyEvent, "Defining your project"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /**
+   * Write the project definition and scope (e.g. "Try again" after
+   * project_definition_failed). Streams progress; resolves with
+   * project_definition_ready or project_definition_failed.
+   */
+  const defineProject = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/project-definition`,
+          DEFINITION_END_EVENTS,
+          applyEvent,
+          "Defining your project"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Move one feature to "core", "optional" or "out_of_scope". The backend checks the scope rules. */
+  const moveScopeItem = useCallback(
+    (itemId: string, to: string) =>
+      run(async () => {
         if (!state.workspaceId) throw new Error("No active project.");
         const event = await apiFetch<GreyEvent>(
-          `/projects/${state.workspaceId}/fyp-design/approve`,
-          { method: "POST", body: JSON.stringify({ design_id: designId }) }
+          `/projects/${state.workspaceId}/scope/move`,
+          { method: "POST", body: JSON.stringify({ item_id: itemId, to }) }
+        );
+        applyEvent(event);
+        return event;
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Approve the project scope (a mandatory decision). Release 0.6 ends here. */
+  const approveScope = useCallback(
+    (definitionId: string) =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${state.workspaceId}/scope/approve`,
+          { method: "POST", body: JSON.stringify({ definition_id: definitionId }) }
         );
         applyEvent(event);
         return event;
@@ -303,5 +364,8 @@ export function useGreyActions() {
     designFYP,
     adjustFYPDirection,
     approveFYPDirection,
+    defineProject,
+    moveScopeItem,
+    approveScope,
   };
 }

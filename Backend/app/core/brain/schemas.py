@@ -27,7 +27,8 @@ class WorkflowState(str, Enum):
     AREA_CLASSIFICATION = "AREA_CLASSIFICATION"
     FYP_DESIGN = "FYP_DESIGN"
     APPROVED_FYP = "APPROVED_FYP"          # Release 0.5 ends here: the student approved the FYP design
-    SCOPE = "SCOPE"
+    SCOPE = "SCOPE"                        # Release 0.6: the student reviews the project definition and scope
+    SCOPE_APPROVED = "SCOPE_APPROVED"      # Release 0.6 ends here: the student approved the scope
     DATASET_DISCOVERY = "DATASET_DISCOVERY"
     AI_STRATEGY = "AI_STRATEGY"
     TECHNOLOGY_PLAN = "TECHNOLOGY_PLAN"
@@ -378,6 +379,115 @@ class FYPDesignRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Project definition and scope (Release 0.6) ────────────────────────────────
+
+# Scope sizes Grey asks for, and the limits the student's own changes must keep.
+MIN_CORE_FEATURES = 2           # a project needs at least two must-have features
+MAX_CORE_FEATURES = 8           # more than this is no longer one student's project
+
+
+class ProblemDefinition(BaseModel):
+    """A precise definition of the approved FYP's problem (blueprint §19)."""
+    problem_statement: str = Field(min_length=1)     # what problem exists
+    affected_users: str = Field(min_length=1)        # who experiences it
+    why_it_matters: str = Field(min_length=1)
+    current_solutions: str = Field(min_length=1)     # what currently exists
+    gap: str = Field(min_length=1)                   # what gap remains
+    what_will_be_built: str = Field(min_length=1)    # what exactly the student will build
+
+
+class SolutionModule(BaseModel):
+    """One main part of the proposed system, e.g. "Data upload — lets the analyst add records"."""
+    name: str = Field(min_length=1, max_length=80)
+    purpose: str = Field(min_length=1)
+
+
+class ProposedSolution(BaseModel):
+    """
+    What the final system will look like (blueprint §21). The target user,
+    input and output come from the approved FYP design, so they are not
+    repeated here. Whether and how AI is used is decided in a later stage
+    (the AI necessity check) — never here.
+    """
+    system_purpose: str = Field(min_length=1)
+    modules: list[SolutionModule] = Field(min_length=2, max_length=6)
+    workflow_steps: list[str] = Field(min_length=3, max_length=8)   # the expected workflow, in order
+
+
+class ScopeKind(str, Enum):
+    """Where a feature sits in the project scope (blueprint §20)."""
+    CORE = "core"                    # must be implemented
+    OPTIONAL = "optional"            # may be added if time remains
+    OUT_OF_SCOPE = "out_of_scope"    # intentionally excluded
+
+
+class ScopeItem(BaseModel):
+    """One feature in the scope."""
+    title: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1)
+    kind: ScopeKind
+
+
+class ProjectDefinition(BaseModel):
+    """
+    The problem definition, scope and proposed solution for the approved FYP
+    (blueprint §19–21), as checked by Grey and ready to be saved.
+    """
+    problem_definition: ProblemDefinition
+    proposed_solution: ProposedSolution
+    scope: list[ScopeItem] = Field(min_length=1)
+
+
+class ProjectDefinitionStatus(str, Enum):
+    DRAFT = "draft"          # the student is reviewing it (and may move scope items)
+    APPROVED = "approved"    # the student approved the scope
+
+
+class StoredScopeItem(ScopeItem):
+    """A scope item as read back from the Project Brain."""
+    id: str
+    position: int            # order inside its list (core / optional / out of scope)
+
+    model_config = {"from_attributes": True}
+
+
+class StoredProjectDefinition(BaseModel):
+    """The project definition as read back from the Project Brain, with its scope items."""
+    id: str
+    workspace_id: str
+    design_id: str                       # the approved FYP design it was written for
+    run_id: str
+    status: ProjectDefinitionStatus
+    problem_definition: ProblemDefinition
+    proposed_solution: ProposedSolution
+    scope: list[StoredScopeItem]         # core first, then optional, then out of scope
+    scope_changes: int = 0               # how many times the student moved an item
+    created_at: datetime
+    approved_at: datetime | None = None
+
+
+class ProjectDefinitionRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class ProjectDefinitionRun(BaseModel):
+    """One attempt at writing the project definition."""
+    id: str
+    workspace_id: str
+    design_id: str
+    status: ProjectDefinitionRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -410,6 +520,11 @@ class WorkspaceBrainSnapshot(BaseModel):
     fyp_design: StoredFYPDesign | None = None
     fyp_adjustments_used: int = 0
     fyp_design_run: FYPDesignRun | None = None
+
+    # Project definition and scope (Release 0.6): the draft or approved
+    # definition, and the latest attempt at writing it.
+    project_definition: StoredProjectDefinition | None = None
+    project_definition_run: ProjectDefinitionRun | None = None
 
     created_at: datetime
     updated_at: datetime

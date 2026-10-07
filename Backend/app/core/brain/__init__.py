@@ -3,6 +3,8 @@ from .repository import (
     FYPDesignRunAlreadyRunningError,
     ProblemRunAlreadyRunningError,
     ProblemSelectionError,
+    ProjectDefinitionError,
+    ProjectDefinitionRunAlreadyRunningError,
     ResearchAlreadyRunningError,
     WorkspaceBrainRepository,
 )
@@ -24,6 +26,8 @@ __all__ = [
     "ProblemRun",
     "ProblemRunAlreadyRunningError",
     "ProblemSelectionError",
+    "ProjectDefinitionError",
+    "ProjectDefinitionRunAlreadyRunningError",
     "ResearchAlreadyRunningError",
     "ResearchRun",
     "StoredProblemCandidate",

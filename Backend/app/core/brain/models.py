@@ -10,6 +10,9 @@ problem_evidence  — which evidence supports which problem option.
 functional_area   — where the chosen problem sits (Release 0.5), one per project.
 fyp_design_run    — one row per FYP design or redesign attempt (Release 0.5).
 fyp_design        — one row per version of the FYP design (draft / superseded / approved).
+project_definition_run — one row per attempt at writing the project definition (Release 0.6).
+project_definition     — the problem definition and proposed solution, one per project.
+scope_item             — one row per feature in the scope (core / optional / out of scope).
 
 Together they are the authoritative state of a student's FYP journey.
 Chat history and LangGraph runtime state are NOT stored here —
@@ -305,3 +308,70 @@ class FYPDesignRecord(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ProjectDefinitionRunRecord(Base):
+    """One attempt at writing the project definition and scope (Release 0.6)."""
+
+    __tablename__ = "project_definition_run"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    design_id: Mapped[str] = mapped_column(String, ForeignKey("fyp_design.id"))
+
+    status: Mapped[str] = mapped_column(String)                     # ProjectDefinitionRunStatus value
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Filled in when the run completes: which LLM wrote the definition
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Filled in when the run fails
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ProjectDefinitionRecord(Base):
+    """
+    The problem definition and proposed solution for the approved FYP
+    (Release 0.6). One per project; its features are scope_item rows.
+    """
+
+    __tablename__ = "project_definition"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), unique=True, index=True
+    )
+    design_id: Mapped[str] = mapped_column(String, ForeignKey("fyp_design.id"))
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("project_definition_run.id"))
+    status: Mapped[str] = mapped_column(String)                     # ProjectDefinitionStatus value
+
+    # Stored as JSON: they are always read and shown as a whole
+    problem_definition: Mapped[dict] = mapped_column(JSON)          # ProblemDefinition
+    proposed_solution: Mapped[dict] = mapped_column(JSON)           # ProposedSolution
+
+    scope_changes: Mapped[int] = mapped_column(Integer, default=0)  # items the student moved
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ScopeItemRecord(Base):
+    """One feature in the project scope: core, optional or out of scope (Release 0.6)."""
+
+    __tablename__ = "scope_item"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    definition_id: Mapped[str] = mapped_column(String, ForeignKey("project_definition.id"), index=True)
+
+    kind: Mapped[str] = mapped_column(String)                       # ScopeKind value
+    position: Mapped[int] = mapped_column(Integer)                  # order inside its list
+    title: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text)

@@ -4,7 +4,8 @@ WorkspaceBrainRepository
 The only place in the codebase that reads from and writes to the
 Project Brain tables (workspace_brain, research_run, evidence_source,
 problem_run, problem_candidate, problem_evidence, functional_area,
-fyp_design_run, fyp_design).
+fyp_design_run, fyp_design, project_definition_run, project_definition,
+scope_item).
 Everything else (API routes, workflows, skills) calls this repository —
 they never touch the database directly.
 
@@ -26,7 +27,10 @@ from app.core.brain.models import (
     ProblemCandidateRecord,
     ProblemEvidenceRecord,
     ProblemRunRecord,
+    ProjectDefinitionRecord,
+    ProjectDefinitionRunRecord,
     ResearchRunRecord,
+    ScopeItemRecord,
     WorkspaceBrainRecord,
 )
 from app.core.brain.schemas import (
@@ -48,15 +52,23 @@ from app.core.brain.schemas import (
     ProblemRunStatus,
     ProblemSourceDetail,
     ProblemStatus,
+    ProjectDefinition,
+    ProjectDefinitionRun,
+    ProjectDefinitionRunStatus,
+    ProjectDefinitionStatus,
     ResearchRun,
+    ScopeKind,
     ResearchStatus,
     StoredEvidenceSource,
     StoredFunctionalArea,
     StoredFYPDesign,
     StoredProblemCandidate,
+    StoredProjectDefinition,
+    StoredScopeItem,
     WorkflowState,
     WorkspaceBrainSnapshot,
 )
+from app.core.brain.scope_rules import move_scope_item, sort_scope
 
 # A run still marked "running" after this long is assumed to have died
 # (e.g. the server stopped mid-research) and no longer blocks a new run.
@@ -67,6 +79,12 @@ STALE_PROBLEM_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for FYP design runs (Release 0.5).
 STALE_FYP_DESIGN_RUN_AFTER = timedelta(minutes=10)
+
+# The same rule for project definition runs (Release 0.6).
+STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
+
+# The same rule for project definition runs (Release 0.6).
+STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
 
 
 class ResearchAlreadyRunningError(Exception):
@@ -83,6 +101,22 @@ class ProblemSelectionError(ValueError):
 
 class FYPDesignRunAlreadyRunningError(Exception):
     """Raised when an FYP design is started for a project that already has one in progress."""
+
+
+class ProjectDefinitionRunAlreadyRunningError(Exception):
+    """Raised when the project definition is already being written for a workspace."""
+
+
+class ProjectDefinitionError(ValueError):
+    """The project definition or scope step is not allowed right now."""
+
+
+class ProjectDefinitionRunAlreadyRunningError(Exception):
+    """Raised when the project definition is already being written for a workspace."""
+
+
+class ProjectDefinitionError(ValueError):
+    """The project definition or scope step is not allowed right now."""
 
 
 class FYPDesignError(ValueError):
@@ -234,6 +268,8 @@ class WorkspaceBrainRepository:
         snapshot.fyp_design = await self.get_current_fyp_design(record.workspace_id)
         snapshot.fyp_adjustments_used = await self.count_fyp_adjustments(record.workspace_id)
         snapshot.fyp_design_run = await self.get_latest_fyp_design_run(record.workspace_id)
+        snapshot.project_definition = await self.get_project_definition(record.workspace_id)
+        snapshot.project_definition_run = await self.get_latest_project_definition_run(record.workspace_id)
         return snapshot
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -960,3 +996,257 @@ class WorkspaceBrainRepository:
         await self._session.commit()
         await self._session.refresh(current)
         return StoredFYPDesign.model_validate(current)
+
+    # ── Project definition and scope (Release 0.6) ────────────────────────────
+
+    async def _definition_record(self, workspace_id: str) -> ProjectDefinitionRecord | None:
+        result = await self._session.execute(
+            select(ProjectDefinitionRecord).where(ProjectDefinitionRecord.workspace_id == workspace_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _scope_records(self, definition_id: str) -> list[ScopeItemRecord]:
+        result = await self._session.execute(
+            select(ScopeItemRecord).where(ScopeItemRecord.definition_id == definition_id)
+        )
+        return list(result.scalars().all())
+
+    async def _latest_definition_run_record(self, workspace_id: str) -> ProjectDefinitionRunRecord | None:
+        result = await self._session.execute(
+            select(ProjectDefinitionRunRecord)
+            .where(ProjectDefinitionRunRecord.workspace_id == workspace_id)
+            .order_by(ProjectDefinitionRunRecord.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_definition_run_record(self, run_id: str) -> ProjectDefinitionRunRecord:
+        run = await self._session.get(ProjectDefinitionRunRecord, run_id)
+        if run is None:
+            raise ValueError(f"Project definition run '{run_id}' not found.")
+        return run
+
+    async def _to_stored_definition(self, record: ProjectDefinitionRecord) -> StoredProjectDefinition:
+        items = [StoredScopeItem.model_validate(r) for r in await self._scope_records(record.id)]
+        return StoredProjectDefinition(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            design_id=record.design_id,
+            run_id=record.run_id,
+            status=ProjectDefinitionStatus(record.status),
+            problem_definition=record.problem_definition,
+            proposed_solution=record.proposed_solution,
+            scope=sort_scope(items),
+            scope_changes=record.scope_changes,
+            created_at=record.created_at,
+            approved_at=record.approved_at,
+        )
+
+    async def get_project_definition(self, workspace_id: str) -> StoredProjectDefinition | None:
+        """The project definition with its scope (draft or approved), or None until Grey has written it."""
+        record = await self._definition_record(workspace_id)
+        return await self._to_stored_definition(record) if record else None
+
+    async def get_latest_project_definition_run(self, workspace_id: str) -> ProjectDefinitionRun | None:
+        """The most recent attempt at writing the project definition, or None."""
+        run = await self._latest_definition_run_record(workspace_id)
+        return ProjectDefinitionRun.model_validate(run) if run else None
+
+    async def start_project_definition_run(self, workspace_id: str) -> ProjectDefinitionRun:
+        """
+        Record that Grey has started writing the project definition. Allowed
+        only at APPROVED_FYP, with an approved design and no definition yet
+        (a failed attempt can be retried).
+
+        Raises:
+            ValueError:                               the project does not exist.
+            ProjectDefinitionError:                   not allowed now (see above).
+            ProjectDefinitionRunAlreadyRunningError:  an attempt is already in progress.
+                A run stuck in "running" longer than STALE_PROJECT_DEFINITION_RUN_AFTER
+                is marked failed instead, so a crashed run can't block forever.
+        """
+        workspace = await self._require_record(workspace_id)
+        design = await self._current_design_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.APPROVED_FYP.value
+            or design is None
+            or design.status != FYPDesignStatus.APPROVED.value
+        ):
+            raise ProjectDefinitionError(
+                f"The project can only be defined after the FYP is approved (stage: {workspace.workflow_state})."
+            )
+        if await self._definition_record(workspace_id) is not None:
+            raise ProjectDefinitionError("The project has already been defined.")
+
+        latest = await self._latest_definition_run_record(workspace_id)
+        if latest is not None and latest.status == ProjectDefinitionRunStatus.RUNNING.value:
+            age = datetime.now(timezone.utc) - _as_utc(latest.started_at)
+            if age < STALE_PROJECT_DEFINITION_RUN_AFTER:
+                raise ProjectDefinitionRunAlreadyRunningError(
+                    f"The project definition is already being written for workspace '{workspace_id}'."
+                )
+            latest.status = ProjectDefinitionRunStatus.FAILED.value
+            latest.error = "Project definition did not finish (marked as stale)."
+            latest.completed_at = datetime.now(timezone.utc)
+
+        run = ProjectDefinitionRunRecord(
+            workspace_id=workspace_id,
+            design_id=design.id,
+            status=ProjectDefinitionRunStatus.RUNNING.value,
+            # Set explicitly so a new run always sorts after the one it replaces.
+            started_at=datetime.now(timezone.utc),
+        )
+        self._session.add(run)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ProjectDefinitionRun.model_validate(run)
+
+    async def complete_project_definition_run(
+        self,
+        run_id: str,
+        definition: ProjectDefinition,
+        *,
+        definition_id: str | None = None,
+        item_ids: list[str] | None = None,
+        provider: str,
+        model: str,
+        prompt_version: str,
+    ) -> StoredProjectDefinition:
+        """
+        Save the project definition and its scope items, mark the run complete
+        and move the project to SCOPE (the student reviews it) — in one commit.
+        `definition_id` and `item_ids` (one per scope item, in order) let the
+        workflow choose the ids, so its review step and the Brain agree.
+
+        Raises:
+            ValueError: the run does not exist or is not running, the project
+                        isn't at APPROVED_FYP, it is already defined, or the
+                        ids don't match the scope.
+        """
+        run = await self._require_definition_run_record(run_id)
+        if run.status != ProjectDefinitionRunStatus.RUNNING.value:
+            raise ValueError(f"Project definition run '{run_id}' is not running (status: {run.status}).")
+        workspace = await self._require_record(run.workspace_id)
+        if workspace.workflow_state != WorkflowState.APPROVED_FYP.value:
+            raise ValueError(f"The project definition can't be saved now (stage: {workspace.workflow_state}).")
+        if await self._definition_record(run.workspace_id) is not None:
+            raise ValueError("The project has already been defined.")
+        if item_ids is not None and len(item_ids) != len(definition.scope):
+            raise ValueError("There must be one id per scope item.")
+
+        record = ProjectDefinitionRecord(
+            id=definition_id or str(uuid.uuid4()),
+            workspace_id=run.workspace_id,
+            design_id=run.design_id,
+            run_id=run.id,
+            status=ProjectDefinitionStatus.DRAFT.value,
+            problem_definition=definition.problem_definition.model_dump(mode="json"),
+            proposed_solution=definition.proposed_solution.model_dump(mode="json"),
+            scope_changes=0,
+        )
+        self._session.add(record)
+
+        positions: dict[ScopeKind, int] = {}
+        for index, item in enumerate(definition.scope):
+            position = positions.get(item.kind, 0)
+            positions[item.kind] = position + 1
+            self._session.add(ScopeItemRecord(
+                id=item_ids[index] if item_ids else str(uuid.uuid4()),
+                workspace_id=run.workspace_id,
+                definition_id=record.id,
+                kind=item.kind.value,
+                position=position,
+                title=item.title,
+                description=item.description,
+            ))
+
+        run.status = ProjectDefinitionRunStatus.COMPLETE.value
+        run.completed_at = datetime.now(timezone.utc)
+        run.provider = provider
+        run.model = model
+        run.prompt_version = prompt_version
+
+        workspace.workflow_state = WorkflowState.SCOPE.value
+        workspace.updated_at = datetime.now(timezone.utc)
+
+        await self._session.commit()
+        await self._session.refresh(record)
+        return await self._to_stored_definition(record)
+
+    async def fail_project_definition_run(self, run_id: str, error: str) -> ProjectDefinitionRun:
+        """
+        Mark an attempt at writing the project definition as failed.
+
+        Raises:
+            ValueError: the run does not exist.
+        """
+        run = await self._require_definition_run_record(run_id)
+
+        run.status = ProjectDefinitionRunStatus.FAILED.value
+        run.error = error
+        run.completed_at = datetime.now(timezone.utc)
+
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ProjectDefinitionRun.model_validate(run)
+
+    async def _require_draft_definition(self, workspace_id: str) -> ProjectDefinitionRecord:
+        workspace = await self._require_record(workspace_id)
+        record = await self._definition_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.SCOPE.value
+            or record is None
+            or record.status != ProjectDefinitionStatus.DRAFT.value
+        ):
+            raise ProjectDefinitionError(
+                f"Project '{workspace_id}' has no scope to review (stage: {workspace.workflow_state})."
+            )
+        return record
+
+    async def move_scope_item(self, workspace_id: str, item_id: str, to: ScopeKind) -> StoredProjectDefinition:
+        """
+        Move one feature to another list (core / optional / out of scope), following
+        the scope rules in scope_rules.py. Only while the student reviews the scope.
+
+        Raises:
+            ValueError:             the project does not exist.
+            ProjectDefinitionError: the scope isn't being reviewed.
+            ScopeChangeError:       the move breaks a scope rule (e.g. too few core features).
+        """
+        record = await self._require_draft_definition(workspace_id)
+        records = await self._scope_records(record.id)
+        moved = move_scope_item([StoredScopeItem.model_validate(r) for r in records], item_id, to)
+
+        new_place = next(item for item in moved if item.id == item_id)
+        target = next(r for r in records if r.id == item_id)
+        target.kind = new_place.kind.value
+        target.position = new_place.position
+        record.scope_changes += 1
+
+        await self._session.commit()
+        await self._session.refresh(record)
+        return await self._to_stored_definition(record)
+
+    async def approve_project_definition(self, workspace_id: str, definition_id: str) -> StoredProjectDefinition:
+        """
+        Record the student's approval of the scope (a mandatory decision).
+        The project moves to SCOPE_APPROVED in the same commit.
+
+        Raises:
+            ValueError:             the project does not exist.
+            ProjectDefinitionError: the scope isn't being reviewed, or `definition_id`
+                                    isn't this project's definition.
+        """
+        record = await self._require_draft_definition(workspace_id)
+        if record.id != definition_id:
+            raise ProjectDefinitionError(f"'{definition_id}' is not this project's definition.")
+
+        workspace = await self._require_record(workspace_id)
+        record.status = ProjectDefinitionStatus.APPROVED.value
+        record.approved_at = datetime.now(timezone.utc)
+        workspace.workflow_state = WorkflowState.SCOPE_APPROVED.value
+        workspace.updated_at = datetime.now(timezone.utc)
+
+        await self._session.commit()
+        await self._session.refresh(record)
+        return await self._to_stored_definition(record)

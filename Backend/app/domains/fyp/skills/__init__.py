@@ -10,6 +10,8 @@ from app.core.skills.registry import SkillRegistry
 from app.core.tools.search import SearchProvider
 from app.domains.fyp.skills.classify_area import ClassifyAreaSkill
 from app.domains.fyp.skills.classify_area.fake import install_fake_answers as install_fake_area_answers
+from app.domains.fyp.skills.define_project import DefineProjectSkill
+from app.domains.fyp.skills.define_project.fake import install_fake_answers as install_fake_definition_answers
 from app.domains.fyp.skills.design_fyp import DesignFYPSkill
 from app.domains.fyp.skills.design_fyp.fake import install_fake_answers as install_fake_design_answers
 from app.domains.fyp.skills.problem_extraction import ProblemExtractionSkill
@@ -26,8 +28,9 @@ def register_fyp_skills(
     """
     Register all FYP skills, giving each one the tools it needs.
 
-    The skills that use the LLM gateway (problem extraction, and the Release 0.5
-    classify_area and design_fyp) are only registered when one is given. In fake
+    The skills that use the LLM gateway (problem extraction, the Release 0.5
+    classify_area and design_fyp, and the Release 0.6 define_project) are only
+    registered when one is given. In fake
     mode, the fake provider is also taught how to answer them.
     """
     registry.register(ResearchEvidenceSkill(search, max_searches=max_searches))
@@ -38,3 +41,5 @@ def register_fyp_skills(
         registry.register(ClassifyAreaSkill(llm))
         install_fake_design_answers(llm)
         registry.register(DesignFYPSkill(llm))
+        install_fake_definition_answers(llm)
+        registry.register(DefineProjectSkill(llm))

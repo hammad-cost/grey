@@ -51,6 +51,14 @@ class EventType(str, Enum):
     FYP_DESIGN_FAILED = "fyp_design_failed"
     FYP_DIRECTION_APPROVED = "fyp_direction_approved"
 
+    # Release 0.6 — project definition and scope. Safe activity only, never reasoning.
+    PROJECT_DEFINITION_STARTED = "project_definition_started"
+    PROJECT_DEFINITION_PROGRESS = "project_definition_progress"
+    PROJECT_DEFINITION_READY = "project_definition_ready"
+    PROJECT_DEFINITION_FAILED = "project_definition_failed"
+    SCOPE_UPDATED = "scope_updated"
+    SCOPE_APPROVED = "scope_approved"
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
     DATASET_OPTIONS_READY = "dataset_options_ready"
@@ -91,7 +99,9 @@ class AllowedAction(str, Enum):
     DESIGN_FYP = "designFYP"                       # turn the chosen problem into an FYP (or retry)
     APPROVE_FYP_DIRECTION = "approveFYPDirection"
     ADJUST_FYP_DIRECTION = "adjustFYPDirection"    # one controlled redesign (up to 3)
-    MODIFY_SCOPE = "modifyScope"
+    DEFINE_PROJECT = "defineProject"               # write the problem definition, scope and solution (or retry)
+    MODIFY_SCOPE = "modifyScope"                   # move a feature between core / optional / out of scope
+    APPROVE_SCOPE = "approveScope"
     SELECT_DATASET = "selectDataset"
     REQUEST_DATASET_ALTERNATIVE = "requestDatasetAlternative"
     APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"

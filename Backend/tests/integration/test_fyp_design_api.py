@@ -169,7 +169,7 @@ async def test_adjust_needs_a_design(client: AsyncClient):
 
 # ── POST /projects/{id}/fyp-design/approve ────────────────────────────────────
 
-async def test_approve_ends_release_0_5(client: AsyncClient):
+async def test_approve_leads_to_defining_the_project(client: AsyncClient):
     workspace_id, ready = await designed_project(client)
     design_id = ready["data"]["fyp"]["design"]["id"]
 
@@ -179,7 +179,7 @@ async def test_approve_ends_release_0_5(client: AsyncClient):
     event = response.json()
     assert event["type"] == "fyp_direction_approved"
     assert event["stage"] == "APPROVED_FYP"
-    assert event["allowed_actions"] == []
+    assert event["allowed_actions"] == ["defineProject"]
     brain = (await client.get(f"/projects/{workspace_id}")).json()
     assert brain["workflow_state"] == "APPROVED_FYP"
     assert brain["fyp_design"]["status"] == "approved"

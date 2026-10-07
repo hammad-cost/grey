@@ -198,7 +198,7 @@ class FYPDesignEventBuilder:
 
 
 def fyp_approved_event(workspace_id: str, view: FYPDesignView) -> GreyEvent:
-    """The student approved the FYP design. Release 0.5 ends here."""
+    """The student approved the FYP design. Next, Grey defines the project (Release 0.6)."""
     return build_event(
         type=EventType.FYP_DIRECTION_APPROVED,
         workspace_id=workspace_id,
@@ -207,5 +207,5 @@ def fyp_approved_event(workspace_id: str, view: FYPDesignView) -> GreyEvent:
         status=EventStatus.COMPLETE,
         data={"fyp": view.model_dump(mode="json")},
         brain_patch={"workflow_state": WorkflowState.APPROVED_FYP.value, **_view_patch(view)},
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.DEFINE_PROJECT],
     )

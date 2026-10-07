@@ -275,7 +275,7 @@ async def test_approval_ends_the_workflow_at_approved_fyp(repo, setup, graph):
     assert event.type == EventType.FYP_DIRECTION_APPROVED
     assert event.stage == WorkflowState.APPROVED_FYP.value
     assert event.status == EventStatus.COMPLETE
-    assert event.allowed_actions == []
+    assert event.allowed_actions == [AllowedAction.DEFINE_PROJECT]       # next: Release 0.6
     assert event.data["fyp"]["design"]["status"] == "approved"
     assert (await repo.get_snapshot(WS)).workflow_state == WorkflowState.APPROVED_FYP
     state = await graph_state(graph)

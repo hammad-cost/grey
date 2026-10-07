@@ -1,14 +1,38 @@
 # Resume Checkpoint
 
-**Updated:** 2026-10-06
+**Updated:** 2026-10-07
 
 | | |
 |---|---|
-| Current release | **0.5 — From problem to FYP: COMPLETE** (all 7 steps, local commits `27e317f` … Step 7 docs commit). **Not pushed, not tagged** — the student reviews 0.5 first. Do NOT start 0.6. |
-| Current step | Waiting for the student's review of Release 0.5. |
-| Last completed step | 0.5 Step 7 — docs + full verification: 674 backend passing + 10 skipped (live), 104 frontend, type-check clean, build OK; fake-mode end-to-end run through a real server (design → 3 redesigns → 4th refused 409 → approve → APPROVED_FYP). |
-| Next action | Student reviews. Optional next: (a) one live 0.5 run with Groq (ask first; ~2–5 Groq calls), (b) browser walk-through of 0.3–0.5, (c) "push to GitHub", (d) resume 0.4.1 Step 2 (evidence quality), (e) plan 0.6 (scope) — only when asked. |
-| Last commit | Release 0.5 Step 7 docs commit on `main` (run `git log --oneline -10`). Unpushed commits since `origin/main`: 0.3+0.4, 0.4 Step 7, 0.4.1 Step 1, 0.5 Steps 1–7. **Ask before pushing.** |
+| Current release | **0.6 — Project definition and scope: COMPLETE** (all 7 steps, local commits `1a18121` … Step 7 docs commit). **Not pushed, not tagged** — the student reviews first. Do NOT start 0.7. |
+| Current step | Waiting for the student's review of Release 0.6 (and 0.5, also unreviewed). |
+| Last completed step | 0.6 Step 7 — docs + full verification: 744 backend passing + 10 skipped (live), 129 frontend, type-check clean, build OK; fake-mode end-to-end run through a real server (… → approve FYP → definition → moves → 4th move refused 409 → approve scope → SCOPE_APPROVED → late move refused 409). |
+| Next action | Student reviews. Optional next: (a) one live run of 0.5 + 0.6 with Groq (ask first; ~3–7 Groq calls), (b) browser walk-through of 0.3–0.6, (c) "push to GitHub", (d) resume 0.4.1 Step 2 (evidence quality), (e) plan 0.7 (AI necessity check + AI/ML strategy, blueprint §22–23) — only when asked. |
+| Last commit | Release 0.6 Step 7 docs commit on `main` (run `git log --oneline -10`). Unpushed commits since `origin/main`: 0.3+0.4, 0.4 Step 7, 0.4.1 Step 1, 0.5 Steps 1–7, 0.6 Steps 1–7. **Ask before pushing.** |
+
+## Release 0.6 plan — Project definition and scope (2026-10-07; built in one continuous run at the student's request: "do 0.6 in single shot")
+
+Scope chosen from the product blueprint's stage order (`APPROVED_FYP → SCOPE → …`): blueprint Steps 10–12 (§19 Problem Definition, §20 Scope Definition, §21 Proposed Solution).
+Boundary: `APPROVED_FYP → (define) → SCOPE (review: move features) → SCOPE_APPROVED`.
+Not in 0.6: AI necessity check / AI strategy (§22–23, next), datasets, models, stack, hardware, architecture, evaluation, feasibility, proposal.
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | Brain: `project_definition_run`, `project_definition` (problem definition + proposed solution JSON), `scope_item`; stage `SCOPE_APPROVED`; `scope_rules.py` (Core 2–8, moves); repository + snapshot fields | ✅ `1a18121` |
+| 2 | Skill `define_project` (structured_reasoning) via registry + gateway; prompt `define_project.v1`; checks (sizes, links, org names, named tech, duplicates, length); fake answer | ✅ `d7dc8de` |
+| 3 | `project_definition` LangGraph workflow (define → scope_review interrupt: move ↺ / approve → END), runner (restart-safe), events, view; `fyp_direction_approved` allows `defineProject` | ✅ `8dbc64e` |
+| 4 | API: `POST /project-definition` (stream), `POST /scope/move`, `POST /scope/approve`, `GET /project-definition` | ✅ `9710b63` |
+| 5 | Frontend adapter: `defineProject`, `moveScopeItem`, `approveScope`; auto-define after `approveFYPDirection` | ✅ `6e6176e` |
+| 6 | `ProjectDefinitionCard`, `ApprovedScopeCard`; `projectDefinition.ts` | ✅ `1065ab2` |
+| 7 | Docs + full verification | ✅ (docs commit) |
+
+0.6 decisions (made by Claude while building in one go — the student may revisit):
+- Scope changes are **moves only** between Core / Optional / Out of scope (no typing new features, no AI rewrite of the definition). Core must keep **2–8** features; the rule lives in one place (`app/core/brain/scope_rules.py`) used by both the workflow and the repository; the frontend mirrors it only to disable buttons.
+- Grey asks the model for 3–6 core, 1–4 optional, 2–5 out of scope, 2–6 modules, 3–8 workflow steps.
+- The proposed solution shows target user / input / output **from the approved design** (not regenerated). The blueprint's "AI component / non-AI components" (§21) is left to the AI necessity check (0.7) so AI is never forced in early.
+- Review happens at the existing stage `SCOPE`; new stage `SCOPE_APPROVED` ends 0.6 (like `APPROVED_FYP` ended 0.5).
+- The definition starts automatically after the student approves the FYP (same pattern as 0.3 and 0.5).
+- No limit on the number of moves; approval needs a confirm click.
 
 ## Release 0.5 plan — From problem to FYP (approved 2026-10-06; built in one continuous run)
 
@@ -100,10 +124,10 @@ For 0.3:
 ## How to verify the last good state
 ```powershell
 cd D:\Projects\Grey\Backend
-.\venv\Scripts\python.exe -m pytest -q      # expect 567 passed, 1 skipped
+.\venv\Scripts\python.exe -m pytest -q      # expect 744 passed, 10 skipped
 cd D:\Projects\Grey\Frontend
-npm test                                    # expect 67 passed
+npm test                                    # expect 129 passed
 cd D:\Projects\Grey
 git status                                  # expect a clean tree
-git log --oneline -3                        # newest should be "Release 0.3 + 0.4: …"
+git log --oneline -3                        # newest should be "Release 0.6 Step 7: …"
 ```

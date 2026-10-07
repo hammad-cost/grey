@@ -1,12 +1,32 @@
 # Grey — Current State
 
-**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · **0.5 From problem to FYP (complete, local commits, not pushed; not yet run live)**
-**Last updated:** 2026-10-06
-**Scope:** FYP Companion, from "Start my FYP" to an approved, evidence-backed FYP design (stage `APPROVED_FYP`)
+**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · 0.5 From problem to FYP (local, not yet run live) · **0.6 Project definition and scope (complete, local commits, not pushed; not yet run live)**
+**Last updated:** 2026-10-07
+**Scope:** FYP Companion, from "Start my FYP" to an approved project scope (stage `SCOPE_APPROVED`)
 
 This file records exactly what is implemented today — no more, no less.
 For the planned product, see `docs/specs/`. For how the pieces fit together, see `docs/architecture.md`.
 For the quick recovery checkpoint (current step, next action), see `docs/resume.md`.
+
+---
+
+## 0c. Release 0.6 (Project definition and scope) — what it added
+
+Product blueprint Steps 10–12 (§19 Problem Definition, §20 Scope Definition, §21 Proposed Solution).
+
+| Step | Built | Location |
+|---|---|---|
+| 1 | Project Brain: `project_definition_run` (each attempt: status, provider/model/prompt version, error), `project_definition` (one per project: problem definition + proposed solution as JSON, status `draft` / `approved`, `scope_changes`), `scope_item` (one row per feature: `core` / `optional` / `out_of_scope`, position). New stage `SCOPE_APPROVED` (review happens at `SCOPE`). Scope rules in plain code (`scope_rules.py`): Core keeps **2–8** features; a moved item goes to the end of its new list. Repository `start/complete/fail_project_definition_run`, `get_project_definition`, `get_latest_project_definition_run`, `move_scope_item`, `approve_project_definition`; snapshot gains `project_definition`, `project_definition_run`. | `Backend/app/core/brain/` |
+| 2 | Skill **`define_project`** (profile `structured_reasoning`, via the Skill Registry and `LLMGateway`): problem definition (problem, who experiences it, why it matters, what exists, the gap, what will be built), proposed solution (purpose, 2–6 modules, 3–8 workflow steps) and scope (3–6 core, 1–4 optional, 2–5 out of scope). Plain-code checks: list sizes, empty/over-long text, links, duplicate feature titles, evidence organization names, named technologies; one retry. The prompt forbids deciding whether AI is needed (that is the next stage). Versioned prompt `define_project.v1`; fake-mode answer. | `Backend/app/domains/fyp/skills/define_project/`, `app/domains/fyp/prompts/define_project.py` |
+| 3 | Separate **`project_definition`** LangGraph workflow: `define_project` → `scope_review` (interrupt: move → back to `scope_review`, approve → END). Runner streams `project_definition_started → _progress ×3 → project_definition_ready` (or `project_definition_failed`), saves with the workflow's ids, checks each move against the scope rules before resuming, and rebuilds the review pause from the Brain (restart-safe). Target user / input / output are taken from the approved design (`view.py`), not rewritten. `fyp_direction_approved` now allows `defineProject`. | `Backend/app/domains/fyp/workflows/project_definition/` |
+| 4 | API: `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`. API version 0.6.0. | `Backend/app/api/project_definition.py` |
+| 5 | Frontend adapter: `approveFYPDirection()` continues straight into the definition when the backend allows `defineProject`; `defineProject()` (retry), `moveScopeItem(itemId, to)`, `approveScope(definitionId)`; `brainSummary` gains `projectDefinitionStatus`, `projectDefinitionId`, `coreFeatureCount`. | `Frontend/core/grey-agent/` |
+| 6 | UI: `ProjectDefinitionCard` (live checklist; failure + Try again; review with Problem definition, Proposed solution, and the three scope lists with **Move to…** buttons that respect the core limits; **Approve scope** with confirm), `ApprovedScopeCard`. Data read safely by `domains/fyp/projectDefinition.ts`. | `Frontend/domains/fyp/`, `app/page.tsx` |
+| 7 | Docs + full verification; fake-mode end-to-end run through a real server (start → … → approve FYP → definition → 3 moves → 4th refused 409 → approve scope → late move refused 409). | `docs/` |
+
+**Behaviour changes vs 0.5:** `fyp_direction_approved` allows `defineProject` (was none), and the frontend starts the definition automatically after the student approves the FYP. The approved-FYP card's footer now says Grey defines the problem, scope and solution next.
+
+Scope changes are **moves only** (between Core / Optional / Out of scope) — no new features typed by the student, and no AI-written rewrite of the definition. The definition never decides whether AI is needed, and never names a dataset, model, API or stack.
 
 ---
 
@@ -78,10 +98,13 @@ The LLM runs in **fake mode by default** (no key, no cost); with `LLM_MODE=live`
 6. Choose one → confirm → see **Your FYP problem**.
 7. Without clicking again, watch Grey find **Your project area** (Industry → Branch → Functional area → Specific area → Problem) and design a **Proposed FYP**: title, what you'll build, who uses it, input, output, main contribution, and **Why this FYP?** (where the problem came from, why it matters, who works on it, how Grey made it student-sized, and the sources with links).
 8. Either **Approve this FYP** (with a confirm step) or **Adjust** it up to 3 times: Make project simpler · Change target user · Change system focus · Reduce implementation complexity, plus an optional short note. Each redesign keeps the same problem.
-9. After approving, see **Your approved FYP**. It is saved in the Project Brain (stage `APPROVED_FYP`).
+9. After approving, see **Your approved FYP** (stage `APPROVED_FYP`) — and, without clicking again, watch Grey define the project.
+10. Review **Your project definition**: the problem definition (what problem exists, who experiences it, why it matters, what exists today, the gap, what you'll build), the proposed solution (purpose, who uses it, input, output, main modules, how it works) and the **scope** in three lists: Core, Optional, Out of scope.
+11. Move any feature to another list (**Move to…**). Core must keep 2–8 features; the buttons that would break this are disabled.
+12. **Approve scope** (with a confirm step) → see **Your approved scope** (stage `SCOPE_APPROVED`).
 
 On any failure: a calm message and **Try again** (or **Research again** when the evidence was too thin). A failed redesign keeps the current design and doesn't use up a redesign.
-The journey stops at the approved FYP. Scope, AI necessity/strategy, datasets, technology, architecture, evaluation, feasibility and the proposal do not exist yet.
+The journey stops at the approved scope. AI necessity/strategy, datasets, technology, architecture, evaluation, feasibility and the proposal do not exist yet.
 
 ---
 
@@ -92,17 +115,18 @@ The journey stops at the approved FYP. Scope, AI necessity/strategy, datasets, t
 | Area | What exists | Location |
 |---|---|---|
 | Configuration | `APP_ENV`, `DATABASE_URL`, `CORS_ORIGINS`, `SEARCH_PROVIDERS`, `SERPAPI_API_KEY`, `TAVILY_API_KEY`, `RESEARCH_MAX_SEARCHES`, `SEARCH_TIMEOUT_SECONDS`, `SEARCH_MAX_RETRIES`, `SEARCH_COOLDOWN_SECONDS`, `SEARCH_QUOTA_COOLDOWN_SECONDS`, `MOCK_SEARCH_DELAY_MS`, `LLM_MODE`, `GROQ_API_KEY`, `GROQ_BASE_URL`, `LLM_PROFILE_*` overrides, `LLM_TIMEOUT_SECONDS`, `LLM_TOTAL_DEADLINE_SECONDS`, `LLM_MAX_RETRIES`, `LLM_COOLDOWN_SECONDS`, `LLM_QUOTA_COOLDOWN_SECONDS` | `app/core/config/settings.py`, `.env.example` |
-| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5) | `app/core/brain/models.py` |
-| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval); read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
+| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5); `project_definition_run`, `project_definition`, `scope_item` (0.6) | `app/core/brain/models.py` |
+| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval, project definition, scope moves, scope approval); scope rules in `scope_rules.py`; read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
 | Database | SQLAlchemy async engine; SQLite locally (`grey.db`); tables created at startup (new tables are added to an existing `grey.db` automatically) | `app/core/brain/database.py` |
 | Event envelope | `GreyEvent` (type, workspace_id, domain, workflow, stage, status, data, brain_patch, allowed_actions) | `app/core/events/schemas.py` |
 | Discovery workflow | `industry_selection` → `branch_selection` → ⏸ → `evidence_research` → ⏸ → `problem_extraction` → `problem_selection` (interrupt) → END | `app/domains/fyp/workflows/discovery/` |
 | FYP Design workflow (0.5) | `area_classification` → `fyp_design` → `fyp_review` (interrupt: approve → END, adjust → `fyp_design`) | `app/domains/fyp/workflows/fyp_design/` |
-| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp` (LLM via gateway), registered at startup | `app/domains/fyp/skills/`, `main.py` |
+| Project Definition workflow (0.6) | `define_project` → `scope_review` (interrupt: move → `scope_review`, approve → END) | `app/domains/fyp/workflows/project_definition/` |
+| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp`, `define_project` (LLM via gateway), registered at startup | `app/domains/fyp/skills/`, `main.py` |
 | Search tool | `SearchGateway` (ordered fallback) over `SerpApiProvider`, `TavilySearchProvider`; `MockSearchProvider` by default | `app/core/tools/` |
 | LLM layer | Gateway, profiles, router, health, errors, schema tools; Fake + OpenAI-compatible (Groq) providers | `app/core/llm/` |
 | Taxonomy | 15 industries, 80 branches, validation helpers | `app/domains/fyp/workflows/discovery/taxonomy.py` |
-| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `GET /health` | `app/api/`, `main.py` |
+| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`, `GET /health` | `app/api/`, `main.py` |
 | CORS | Browser origins from `CORS_ORIGINS` (default `http://localhost:3000`) | `main.py` |
 
 ### Frontend (`Frontend/`)
@@ -110,20 +134,21 @@ The journey stops at the approved FYP. Scope, AI necessity/strategy, datasets, t
 | Area | What exists | Location |
 |---|---|---|
 | App shell | Next.js 15 App Router, Tailwind, sidebar placeholder, disabled chat input | `app/layout.tsx`, `app/page.tsx` |
-| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`), `readEventStream` | `core/grey-agent/` |
+| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`, `defineProject`, `moveScopeItem`, `approveScope`), `readEventStream` | `core/grey-agent/` |
 | UI state | `GreyUIState` from each `GreyEvent`: latest `eventData` + `lastEventType`, `progress`, `brainSummary` (camelCase from `brain_patch`) | `core/grey-agent/GreyAgentProvider.tsx` |
 | Discovery cards | `IndustrySelector`, `BranchSelector`, `ResearchProgressCard`, `ProblemProgressCard`, `ProblemOptions`, `ProblemOpportunityCard`, `SelectedProblemCard`, `StepChecklist` | `domains/fyp/components/` |
 | FYP cards (0.5) | `FunctionalAreaCard`, `FYPDirectionCard`, `ApprovedFYPCard` | `domains/fyp/components/` |
-| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`) | `domains/fyp/` |
+| Definition cards (0.6) | `ProjectDefinitionCard`, `ApprovedScopeCard` | `domains/fyp/components/` |
+| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`); `projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`, `SCOPE_LISTS`) | `domains/fyp/` |
 
 ### Tests
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **674 passing, 10 skipped** (the live Groq + 9 live search tests) |
+| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **744 passing, 10 skipped** (the live Groq + 9 live search tests) |
 | Backend live LLM | `$env:RUN_LIVE_LLM_TESTS="1"; ...pytest -m live_llm -s` | 1 test, needs `GROQ_API_KEY`; uses a little Groq quota |
 | Backend live search | `$env:RUN_LIVE_SEARCH_TESTS="1"; ...pytest -m live_search -s` | 9 tests, need `SERPAPI_API_KEY` / `TAVILY_API_KEY`; about 1 credit each |
-| Frontend (Vitest) | `cd Frontend; npm test` | **104 passing** |
+| Frontend (Vitest) | `cd Frontend; npm test` | **129 passing** |
 | Frontend type-check | `npm run type-check` | 0 errors |
 | Frontend build | `npm run build` | succeeds |
 
@@ -137,7 +162,7 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 |---|---|
 | LLM profiles `high_quality_reasoning`, `writing`, `long_context` | Defined and configurable; no skill uses them yet (`structured_reasoning` and, since 0.5, `fast_cheap` are used). |
 | CopilotKit | Packages installed. **Not wired** — the adapter uses `fetch` + an NDJSON reader. |
-| Future enums | `WorkflowState`, `EventType`, `AllowedAction` contain values for later releases (e.g. `SCOPE`, `dataset_options_ready`, `requestMoreProblems`, `modifyScope`). `EventType.STAGE_CHANGED` is defined but never sent. |
+| Future enums | `WorkflowState`, `EventType`, `AllowedAction` contain values for later releases (e.g. `DATASET_DISCOVERY`, `dataset_options_ready`, `requestMoreProblems`, `selectDataset`). `EventType.STAGE_CHANGED` is defined but never sent. |
 | `askGrey` action | Included in some `allowed_actions`, but no handler on either side. |
 | Sidebar, chat input | Visual placeholders; not interactive. |
 | Empty folders | `Frontend/core/{chat,drawers,sidebar,shared-components}`, `Frontend/domains/fyp/{actions,routes}`. |
@@ -146,7 +171,8 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 
 ## 4. Not implemented (by design, for later releases)
 
-- Problem definition, scope, AI necessity/strategy, datasets, models, technology stack, architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the approved FYP
+- AI necessity check and AI/ML strategy, datasets, models, technology stack, hardware, architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the approved scope
+- Adding or rewording scope features, or asking Grey to rewrite the definition (0.6 allows moves between lists only)
 - Asking for more / different problems, or going back to change an earlier decision (e.g. a different problem after the FYP design started)
 - Evidence quality improvements of 0.4.1 Steps 2–4 (paused by the student's choice)
 - Paid startup databases (Dealroom / Crunchbase APIs) — public pages are found through search only
@@ -165,7 +191,7 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 
 1. **Workflow progress is lost when the backend restarts** (`MemorySaver`).
    - Industry/branch steps (0.1): a project started *before* a restart can hit **500** at the branch step.
-   - Research, problem extraction, problem selection and the whole FYP design (design, redesign, approval) are **not affected**: they rebuild the workflow position from the Brain and replace runs left "running" by a stopped server.
+   - Research, problem extraction, problem selection, the whole FYP design (design, redesign, approval) and the project definition (definition, scope moves, approval) are **not affected**: they rebuild the workflow position from the Brain and replace runs left "running" by a stopped server.
 
 2. **Project Brain `workflow_state` lags during branch selection** (stays `INDUSTRY_SELECTION` until the branch is saved).
 
@@ -193,6 +219,10 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 14. **If the connection drops during a redesign**, the page shows the error but has no "Try again" for that redesign (the backend may still have saved it). Reloading the page doesn't restore the place yet (see item 3); `GET /projects/{id}/fyp-design` has the saved state.
 
 15. **A failed redesign doesn't count** toward the 3-redesign limit; only saved redesigns do.
+
+16. **Release 0.6 has not been run with the real model yet** (fake LLM only, plus one fake-mode end-to-end run through a real server). The definition asks for a longer reply than the design (up to 4,000 output tokens), so on Groq's free tier it is the most likely call to hit the per-minute limit. Fake-mode definitions are template-based.
+
+17. **During the definition the approved-FYP card shows only the title**, because the definition events replace the FYP details on screen (the details stay in the Brain and come back in `GET /projects/{id}/fyp-design`).
 
 ---
 

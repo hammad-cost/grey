@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-06 (Release 0.5)
+**Last updated:** 2026-10-07 (Release 0.6)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -24,10 +24,11 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F9 | LLM gateway (profiles, fallback, providers) | ✅ (Fake + Groq) | 0.3 |
 | F10 | Search gateway (SerpAPI → Tavily fallback) | ✅ (live-tested) | 0.4 / 0.4.1 |
 | F11 | From problem to FYP (area, design, redesigns, approval) | ✅ (fake LLM by default; not yet run live) | 0.5 |
+| F12 | Project definition and scope (definition, scope moves, approval) | ✅ (fake LLM by default; not yet run live) | 0.6 |
 
 ---
 
-## Request flow (shared by F1–F3; F6, F8 and F11 stream — see F6, F8, F11)
+## Request flow (shared by F1–F3; F6, F8, F11 and F12 stream — see F6, F8, F11, F12)
 
 ```
 Student clicks a button / card
@@ -228,5 +229,24 @@ After the student confirms a problem, Grey works out where it sits (functional a
 | Skills | `classify_area` (`fast_cheap`) and `design_fyp` (`structured_reasoning`) — `Backend/app/domains/fyp/skills/classify_area/`, `design_fyp/`; shared `ProblemBrief`, progress and text checks in `fyp_design_shared.py`. Checks: link, organization name, named technology/dataset/model/API (word list), too long, area = branch, specific = functional, unchanged redesign; one retry. Prompts `classify_area.v1`, `design_fyp.v1` with `ADJUSTMENT_REQUESTS` — `app/domains/fyp/prompts/`. Fake-mode answers in each skill's `fake.py`. |
 | Why this FYP? | Built by code in `workflows/fyp_design/view.py` from the selected problem (real-world problem, why it matters, observed solutions, cited sources with supporting points) + the design's `scope_reduction` |
 | Project Brain | `functional_area` (one per project), `fyp_design_run` (kind initial/adjustment, adjustment, note, status, provider/model/prompt version, error), `fyp_design` (version, status draft/superseded/approved, fields, adjustment, note, approved_at). Stages `PROBLEM_SELECTED` → `AREA_CLASSIFICATION` → `FYP_DESIGN` → `APPROVED_FYP`, each in the same commit as its data. Max 3 saved redesigns. |
-| Events | `fyp_design_started` → `fyp_design_progress` (classifying) → `area_classified` → `fyp_design_progress` ×3 (designing, checking, saving) → `fyp_direction_ready` (stage `FYP_DESIGN`, `awaiting_user`, allowed `approveFYPDirection` + `adjustFYPDirection` while redesigns are left, `data.fyp`). Redesign: started → progress ×3 → ready. Failure: `fyp_design_failed` — first design: `blocked`, allowed `designFYP`; redesign: `awaiting_user`, current design kept, allowed approve/adjust. Approval: `fyp_direction_approved` (stage `APPROVED_FYP`, `complete`, no actions). |
+| Events | `fyp_design_started` → `fyp_design_progress` (classifying) → `area_classified` → `fyp_design_progress` ×3 (designing, checking, saving) → `fyp_direction_ready` (stage `FYP_DESIGN`, `awaiting_user`, allowed `approveFYPDirection` + `adjustFYPDirection` while redesigns are left, `data.fyp`). Redesign: started → progress ×3 → ready. Failure: `fyp_design_failed` — first design: `blocked`, allowed `designFYP`; redesign: `awaiting_user`, current design kept, allowed approve/adjust. Approval: `fyp_direction_approved` (stage `APPROVED_FYP`, `complete`, allowed `defineProject` since 0.6 → F12). |
 | Tests | Backend: `test_brain_fyp_design.py` (26), `test_fyp_design_skills.py` (36), `test_fyp_design_workflow.py` (24), `tests/integration/test_fyp_design_api.py` (13). Frontend: adapter tests (7 new), `fypDesign.test.ts`, `FunctionalAreaCard.test.tsx`, `FYPDirectionCard.test.tsx`, `ApprovedFYPCard.test.tsx` |
+
+---
+
+## F12 — Project definition and scope (Release 0.6)
+
+After the student approves the FYP, Grey writes a precise problem definition, a proposed solution and a scope (Core / Optional / Out of scope). The student moves features between the lists and approves the scope (blueprint §19–21).
+
+| Layer | Detail |
+|---|---|
+| UI | `ProjectDefinitionCard` (live checklist; failure → Try again; review: Problem definition (6 questions), Proposed solution (purpose, who uses it, input, output, main modules, how it works), Scope in three lists with **Move to…** buttons — disabled when Core would leave 2–8 — a "Moved …" notice, **Approve scope** with confirm dialog), `ApprovedScopeCard` (core features + counts) — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.definition` (project_definition_ready, scope_updated, scope_approved), `brainSummary` (`projectDefinitionStatus`, `projectDefinitionId`, `coreFeatureCount`); parsed by `Frontend/domains/fyp/projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`) |
+| Adapter actions | `approveFYPDirection(id)` continues into `/project-definition` automatically when the backend allows `defineProject`; `defineProject()` (retry); `moveScopeItem(itemId, to)`; `approveScope(definitionId)` — `Frontend/core/grey-agent/hooks.ts` |
+| API | `POST /projects/{id}/project-definition` → **200** NDJSON stream; **404** unknown; **409** FYP not approved / already defined / already running. `POST /projects/{id}/scope/move {item_id, to}` → **200** `scope_updated`; **409** no scope to review / unknown item / already in that list / Core would leave 2–8; **422** `to` not `core` / `optional` / `out_of_scope`. `POST /projects/{id}/scope/approve {definition_id}` → **200** `scope_approved`; **409** wrong id / nothing to approve. `GET /projects/{id}/project-definition` → `ProjectDefinitionResponse` (view, latest run) — `Backend/app/api/project_definition.py` |
+| Runner | `start_project_definition()` + `ProjectDefinitionSession.events()`, `move_scope()`, `approve_scope()` — `Backend/app/domains/fyp/workflows/project_definition/runner.py`. Saves the definition and items with the workflow's ids, fails runs left "running", checks a move with `scope_rules.move_scope_item` before resuming, rebuilds the review pause from the Brain. |
+| Workflow | Separate graph `project_definition`: `define_project` → `scope_review` (`interrupt`: move → `scope_review`, approve → END) — `nodes.py`, `graph.py`, `state.py` |
+| Skill | `define_project` (`structured_reasoning`, max 4,000 output tokens) — `Backend/app/domains/fyp/skills/define_project/`. Checks: list sizes (modules 2–6, steps 3–8, core 3–6, optional 1–4, out 2–5), empty, link, too long (titles 80, texts 500), duplicate feature title, organization name, named technology; one retry. Prompt `define_project.v1` (never decides whether AI is needed). Fake answer in `fake.py`. |
+| Project Brain | `project_definition_run` (status, provider/model/prompt version, error), `project_definition` (problem definition + proposed solution JSON, status draft/approved, scope_changes, approved_at), `scope_item` (kind, position, title, description). Stages `APPROVED_FYP` → `SCOPE` → `SCOPE_APPROVED`, each in the same commit as its data. Scope rules in `app/core/brain/scope_rules.py`. |
+| Events | `project_definition_started` → `project_definition_progress` ×3 (writing, checking, saving) → `project_definition_ready` (stage `SCOPE`, `awaiting_user`, allowed `approveScope` + `modifyScope`, `data.definition`). Failure: `project_definition_failed` (`blocked`, safe message, allowed `defineProject`). Move: `scope_updated` (`data.moved` = the feature's title). Approval: `scope_approved` (stage `SCOPE_APPROVED`, `complete`, no actions). |
+| Tests | Backend: `test_brain_project_definition.py` (23), `test_define_project_skill.py` (21), `test_project_definition_workflow.py` (17), `tests/integration/test_project_definition_api.py` (9). Frontend: adapter tests (6 new), `projectDefinition.test.ts`, `ProjectDefinitionCard.test.tsx`, `ApprovedScopeCard.test.tsx` |

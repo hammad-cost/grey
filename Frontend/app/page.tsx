@@ -13,23 +13,28 @@
  *   PROBLEM_SELECTED   → SelectedProblemCard + FYPDirectionCard (Grey designing the FYP)
  *   AREA_CLASSIFICATION→ FunctionalAreaCard + FYPDirectionCard (still designing)
  *   FYP_DESIGN         → FunctionalAreaCard + FYPDirectionCard (review: approve / adjust)
- *   APPROVED_FYP       → ApprovedFYPCard (Release 0.5 ends here)
+ *   APPROVED_FYP       → ApprovedFYPCard + ProjectDefinitionCard (Grey defining the project)
+ *   SCOPE              → ProjectDefinitionCard (review: move features, approve the scope)
+ *   SCOPE_APPROVED     → ApprovedScopeCard (Release 0.6 ends here)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
 import { ApprovedFYPCard } from "@/domains/fyp/components/ApprovedFYPCard";
+import { ApprovedScopeCard } from "@/domains/fyp/components/ApprovedScopeCard";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
 import { FunctionalAreaCard } from "@/domains/fyp/components/FunctionalAreaCard";
 import { FYPDirectionCard } from "@/domains/fyp/components/FYPDirectionCard";
 import { IndustrySelector } from "@/domains/fyp/components/IndustrySelector";
 import { ProblemOptions } from "@/domains/fyp/components/ProblemOptions";
 import { ProblemProgressCard } from "@/domains/fyp/components/ProblemProgressCard";
+import { ProjectDefinitionCard } from "@/domains/fyp/components/ProjectDefinitionCard";
 import { ResearchProgressCard } from "@/domains/fyp/components/ResearchProgressCard";
 import { SelectedProblemCard } from "@/domains/fyp/components/SelectedProblemCard";
 
 // Stages whose cards show their own progress, so the generic spinner is hidden.
 const STAGES_WITH_OWN_PROGRESS = [
   "EVIDENCE_RESEARCH", "PROBLEM_OPTIONS", "PROBLEM_SELECTED", "AREA_CLASSIFICATION", "FYP_DESIGN",
+  "APPROVED_FYP", "SCOPE",
 ];
 
 export default function Home() {
@@ -104,6 +109,12 @@ export default function Home() {
           <FunctionalAreaCard />
           <FYPDirectionCard />
           <ApprovedFYPCard />
+        </div>
+
+        {/* ── Project definition and scope (Release 0.6) ──────────────────── */}
+        <div className="flex flex-col gap-4 mt-4">
+          <ProjectDefinitionCard />
+          <ApprovedScopeCard />
         </div>
 
       </div>

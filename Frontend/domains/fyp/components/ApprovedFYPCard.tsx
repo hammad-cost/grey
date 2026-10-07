@@ -54,7 +54,7 @@ export function ApprovedFYPCard() {
       )}
 
       <p className="mt-4 text-sm text-gray-400">
-        Saved to your Project Brain. Next, Grey will define your project&apos;s scope (coming in a future release).
+        Saved to your Project Brain. Next, Grey defines your problem, scope and solution.
       </p>
     </section>
   );

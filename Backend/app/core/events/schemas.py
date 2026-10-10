@@ -66,9 +66,15 @@ class EventType(str, Enum):
     AI_STRATEGY_FAILED = "ai_strategy_failed"
     AI_STRATEGY_APPROVED = "ai_strategy_approved"
 
+    # Release 0.8 — dataset discovery. Safe activity only, never reasoning.
+    DATASET_SEARCH_STARTED = "dataset_search_started"
+    DATASET_SEARCH_PROGRESS = "dataset_search_progress"
+    DATASET_OPTIONS_READY = "dataset_options_ready"        # name from the frontend blueprint
+    DATASET_SEARCH_FAILED = "dataset_search_failed"
+    DATASET_SELECTED = "dataset_selected"
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
-    DATASET_OPTIONS_READY = "dataset_options_ready"
     ARCHITECTURE_READY = "architecture_ready"
     FEASIBILITY_READY = "feasibility_ready"
     SUPERVISOR_READINESS_READY = "supervisor_readiness_ready"
@@ -112,8 +118,9 @@ class AllowedAction(str, Enum):
     CHECK_AI_NEED = "checkAINeed"                  # check whether the project needs AI, and plan it (or retry)
     RECHECK_AI_STRATEGY = "recheckAIStrategy"      # check again with a preference (up to 2 times)
     APPROVE_AI_STRATEGY = "approveAIStrategy"
-    SELECT_DATASET = "selectDataset"
-    REQUEST_DATASET_ALTERNATIVE = "requestDatasetAlternative"
+    FIND_DATASETS = "findDatasets"                 # search for datasets and recommend two (or retry)
+    SELECT_DATASET = "selectDataset"               # select the primary or the alternative dataset
+    REQUEST_DATASET_ALTERNATIVE = "requestDatasetAlternative"   # search again with a preference (up to 2 times)
     APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"
     GO_BACK = "goBack"
     ASK_GREY = "askGrey"

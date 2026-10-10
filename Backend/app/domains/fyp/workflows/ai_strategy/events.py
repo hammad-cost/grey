@@ -179,7 +179,7 @@ class AIStrategyEventBuilder:
 
 
 def ai_strategy_approved_event(workspace_id: str, view: AIStrategyView) -> GreyEvent:
-    """The student approved the AI strategy. Release 0.7 ends here."""
+    """The student approved the AI strategy. Next, Grey looks for datasets (Release 0.8)."""
     return build_event(
         type=EventType.AI_STRATEGY_APPROVED,
         workspace_id=workspace_id,
@@ -188,5 +188,5 @@ def ai_strategy_approved_event(workspace_id: str, view: AIStrategyView) -> GreyE
         status=EventStatus.COMPLETE,
         data={"ai_strategy": view.model_dump(mode="json")},
         brain_patch={"workflow_state": WorkflowState.AI_STRATEGY_APPROVED.value, **_view_patch(view)},
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.FIND_DATASETS],
     )

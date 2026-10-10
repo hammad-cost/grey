@@ -162,7 +162,7 @@ async def test_approval_ends_release_0_7(client: AsyncClient):
     assert event["type"] == "ai_strategy_approved"
     assert event["stage"] == "AI_STRATEGY_APPROVED"
     assert event["status"] == "complete"
-    assert event["allowed_actions"] == []
+    assert event["allowed_actions"] == ["findDatasets"]          # Release 0.8: datasets come next
     brain = (await client.get(f"/projects/{workspace_id}")).json()
     assert brain["workflow_state"] == "AI_STRATEGY_APPROVED"
     assert brain["ai_strategy"]["status"] == "approved"

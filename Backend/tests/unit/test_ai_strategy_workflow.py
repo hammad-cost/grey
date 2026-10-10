@@ -337,7 +337,7 @@ async def test_approving_ends_release_0_7(repo, setup, graph):
     assert event.type == EventType.AI_STRATEGY_APPROVED
     assert event.stage == WorkflowState.AI_STRATEGY_APPROVED.value
     assert event.status == EventStatus.COMPLETE
-    assert event.allowed_actions == []
+    assert event.allowed_actions == [AllowedAction.FIND_DATASETS]   # Release 0.8: datasets come next
     assert event.data["ai_strategy"]["strategy"]["status"] == "approved"
     assert event.data["ai_strategy"]["available_rechecks"] == []
 

@@ -16,6 +16,8 @@ from app.domains.fyp.skills.design_fyp import DesignFYPSkill
 from app.domains.fyp.skills.design_fyp.fake import install_fake_answers as install_fake_design_answers
 from app.domains.fyp.skills.find_datasets import FindDatasetsSkill
 from app.domains.fyp.skills.find_datasets.fake import install_fake_answers as install_fake_dataset_answers
+from app.domains.fyp.skills.find_models import FindModelsSkill
+from app.domains.fyp.skills.find_models.fake import install_fake_answers as install_fake_model_answers
 from app.domains.fyp.skills.plan_ai_strategy import PlanAIStrategySkill
 from app.domains.fyp.skills.plan_ai_strategy.fake import install_fake_answers as install_fake_strategy_answers
 from app.domains.fyp.skills.problem_extraction import ProblemExtractionSkill
@@ -35,8 +37,8 @@ def register_fyp_skills(
 
     The skills that use the LLM gateway (problem extraction, the Release 0.5
     classify_area and design_fyp, the Release 0.6 define_project, the
-    Release 0.7 plan_ai_strategy and the Release 0.8 find_datasets, which also
-    searches) are only registered when one is given. In fake mode, the fake
+    Release 0.7 plan_ai_strategy, and the Release 0.8 find_datasets and 0.9
+    find_models, which also search) are only registered when one is given. In fake mode, the fake
     provider is also taught how to answer them.
     """
     registry.register(ResearchEvidenceSkill(search, max_searches=max_searches))
@@ -53,3 +55,5 @@ def register_fyp_skills(
         registry.register(PlanAIStrategySkill(llm))
         install_fake_dataset_answers(llm)
         registry.register(FindDatasetsSkill(search, llm, max_searches=max_dataset_searches))
+        install_fake_model_answers(llm)
+        registry.register(FindModelsSkill(search, llm, max_searches=max_dataset_searches))

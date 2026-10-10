@@ -15,6 +15,7 @@ from app.core.brain.schemas import (
     FYPDesignRun,
     ProblemRun,
     ProjectDefinitionRun,
+    ProposalRun,
     ReadinessRun,
     ResearchRun,
     StoredEvidenceSource,
@@ -25,6 +26,7 @@ from app.domains.fyp.workflows.ai_strategy.view import AIStrategyView
 from app.domains.fyp.workflows.dataset_discovery.view import DatasetView
 from app.domains.fyp.workflows.feasibility.view import FeasibilityView
 from app.domains.fyp.workflows.model_selection.view import ModelView
+from app.domains.fyp.workflows.proposal.view import ProposalView
 from app.domains.fyp.workflows.supervisor_readiness.view import SupervisorBriefView
 from app.domains.fyp.workflows.technical_plan.view import TechnicalPlanView
 from app.domains.fyp.workflows.technology_plan.view import TechnologyView
@@ -117,3 +119,11 @@ class SupervisorBriefResponse(BaseModel):
     workflow_state: WorkflowState
     supervisor_brief: SupervisorBriefView | None = None   # None until feasibility is accepted
     latest_run: ReadinessRun | None = None
+
+
+class ProposalResponse(BaseModel):
+    """Body for GET /projects/{workspace_id}/proposal (Release 0.14)."""
+    workspace_id: str
+    workflow_state: WorkflowState
+    proposal: ProposalView | None = None          # None until the student is ready for their supervisor
+    latest_run: ProposalRun | None = None

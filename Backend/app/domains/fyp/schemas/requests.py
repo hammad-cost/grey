@@ -14,6 +14,7 @@ from app.core.brain.schemas import (
     DatasetPreference,
     FYPAdjustment,
     ModelPreference,
+    ProposalSectionId,
     ScopeKind,
     TechnologyPreference,
 )
@@ -116,3 +117,13 @@ class AcceptFeasibilityRequest(BaseModel):
 class ConfirmSupervisorReadyRequest(BaseModel):
     """Body for POST /projects/{workspace_id}/supervisor-brief/confirm — the id of the supervisor brief."""
     brief_id: str = Field(min_length=1)
+
+
+class RewriteProposalSectionRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/proposal/rewrite — the section to rewrite."""
+    section: ProposalSectionId
+
+
+class FinalizeProposalRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/proposal/finalize — the id of the proposal."""
+    proposal_id: str = Field(min_length=1)

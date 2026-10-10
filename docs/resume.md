@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | Current release | **0.12 — Feasibility analysis: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.11 is complete (local, not pushed). |
-| Current step | 0.12 Step 1 (plan + Brain storage). |
+| Current step | **0.12 Step 5 next** (frontend adapter: `assessFeasibility`, `acceptFeasibility`; auto-start after `approveTechnicalPlan`). Steps 1–4 done (backend complete: Brain, skill, workflow, API). Stopped 2026-10-11 because the usage limit was reached. |
 | Last completed step | 0.11 Step 8 — docs + verification: 1171 backend + 15 skipped, 219 frontend, type-check + build OK; fake e2e through a real server OK; live design_architecture run (Groq) OK. |
 | Next action | Continue the roadmap below, release by release. After each release: full tests, fake e2e, docs + memory, then the next release. Commit locally; **do not push** (the student says "push"). |
 | Last commit | `git log --oneline -10`. `origin/main` = 0.8 docs push; everything after it is local. |
@@ -29,10 +29,10 @@ Scope: blueprint Step 21 (§32). Boundary: `TECHNICAL_PLAN_APPROVED → (assess)
 
 | Step | What | Commit |
 |---|---|---|
-| 1 | Brain: `feasibility_run`, `feasibility_report` (13 dimensions, main risks with mitigations, overall High / Medium / Low with reason); stage `FEASIBILITY_ACCEPTED`; `feasibility_rules.py` (all 13 dimensions once; overall computed in code); repository + snapshot | |
-| 2 | Skill `assess_feasibility`: **facts in plain code** (evidence strength from the problem's evidence tiers, data availability from the selected dataset, hardware and cost from the technology plan, evaluation possibility and demonstrability from the technical plan); **judgement by the LLM** (problem relevance, technical complexity, time, external dependencies, ethical / legal, risk, novelty) + 1–5 main risks with mitigations + summary; overall computed in code; checks; prompt; fake answers | |
-| 3 | `feasibility` workflow (assess → review interrupt: accept → END), runner, events, view; `technical_plan_approved` allows `assessFeasibility` | |
-| 4 | API: `POST /feasibility` (stream), `POST /feasibility/accept`, `GET /feasibility` | |
+| 1 | Brain: `feasibility_run`, `feasibility_report` (13 dimensions, main risks with mitigations, overall High / Medium / Low with reason); stage `FEASIBILITY_ACCEPTED`; `feasibility_rules.py` (all 13 dimensions once; overall computed in code); repository + snapshot | ✅ `93d081d` |
+| 2 | Skill `assess_feasibility`: **facts in plain code** (evidence strength from the problem's evidence tiers, data availability from the selected dataset, hardware and cost from the technology plan, evaluation possibility and demonstrability from the technical plan); **judgement by the LLM** (problem relevance, technical complexity, time, external dependencies, ethical / legal, risk, novelty) + 1–5 main risks with mitigations + summary; overall computed in code; checks; prompt; fake answers | ✅ `3da1a4f + fix 8136462` |
+| 3 | `feasibility` workflow (assess → review interrupt: accept → END), runner, events, view; `technical_plan_approved` allows `assessFeasibility` | ✅ `8e81fb7` |
+| 4 | API: `POST /feasibility` (stream), `POST /feasibility/accept`, `GET /feasibility` | ✅ `1165ca5` |
 | 5 | Frontend adapter: `assessFeasibility`, `acceptFeasibility`; auto-start after `approveTechnicalPlan` | |
 | 6 | `FeasibilityCard` (overall badge, the 13 dimensions, main risks), `AcceptedFeasibilityCard`; `feasibility.ts` | |
 | 7 | Docs + full verification + fake e2e + live Groq run | |

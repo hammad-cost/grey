@@ -53,6 +53,7 @@ const FYP_DESIGN_END_EVENTS = ["fyp_direction_ready", "fyp_design_failed"];
 const DEFINITION_END_EVENTS = ["project_definition_ready", "project_definition_failed"];
 const AI_STRATEGY_END_EVENTS = ["ai_strategy_ready", "ai_strategy_failed"];
 const DATASET_END_EVENTS = ["dataset_options_ready", "dataset_search_failed"];
+const MODEL_END_EVENTS = ["models_ready", "model_search_failed"];
 
 /**
  * POST to a streaming endpoint (with an optional JSON body) and apply every
@@ -461,14 +462,64 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  /** Select the "primary" or the "alternative" dataset (a mandatory decision). Release 0.8 ends here. */
+  /**
+   * Select the "primary" or the "alternative" dataset (a mandatory decision), then
+   * — when the backend says so (dataset_selected allows "findModels") — look for
+   * pretrained models and APIs straight away (Release 0.9). Resolves with the final
+   * event (models_ready or model_search_failed, or dataset_selected).
+   */
   const selectDataset = useCallback(
     (planId: string, choice: string) =>
       run(async () => {
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${workspaceId}/datasets/select`,
+          { method: "POST", body: JSON.stringify({ plan_id: planId, choice }) }
+        );
+        applyEvent(event);
+        if (!event.allowed_actions.includes(Actions.FIND_MODELS)) return event;
+
+        return runEventStream(
+          `/projects/${workspaceId}/models`, MODEL_END_EVENTS, applyEvent, "Looking for models"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Look for pretrained models and APIs (e.g. "Try again" after model_search_failed). */
+  const findModels = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/models`, MODEL_END_EVENTS, applyEvent, "Looking for models"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Ask Grey to look for other models ("other_options", up to 2 times). Streams progress. */
+  const requestOtherModels = useCallback(
+    (preference: string) =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/models/research`, MODEL_END_EVENTS, applyEvent, "Searching again",
+          { preference }
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Approve the model plan (a mandatory decision). Release 0.9 ends here. */
+  const approveModels = useCallback(
+    (planId: string) =>
+      run(async () => {
         if (!state.workspaceId) throw new Error("No active project.");
         const event = await apiFetch<GreyEvent>(
-          `/projects/${state.workspaceId}/datasets/select`,
-          { method: "POST", body: JSON.stringify({ plan_id: planId, choice }) }
+          `/projects/${state.workspaceId}/models/approve`,
+          { method: "POST", body: JSON.stringify({ plan_id: planId }) }
         );
         applyEvent(event);
         return event;
@@ -495,5 +546,8 @@ export function useGreyActions() {
     findDatasets,
     requestDatasetAlternative,
     selectDataset,
+    findModels,
+    requestOtherModels,
+    approveModels,
   };
 }

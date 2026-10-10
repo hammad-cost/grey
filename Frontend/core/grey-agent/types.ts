@@ -62,6 +62,11 @@ export type WorkspaceBrainSummary = {
   datasetResearchesLeft?: number;
   /** The name of the dataset the student selected. */
   datasetSelected?: string;
+  /** Pretrained models and APIs (Release 0.9): "running" | "draft" | "approved" | "failed". */
+  modelStatus?: string;
+  modelPlanId?: string;
+  modelOptionCount?: number;
+  modelResearchesLeft?: number;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -141,6 +146,9 @@ export const Actions = {
   FIND_DATASETS: "findDatasets",
   REQUEST_DATASET_ALTERNATIVE: "requestDatasetAlternative",
   SELECT_DATASET: "selectDataset",
+  FIND_MODELS: "findModels",
+  REQUEST_OTHER_MODELS: "requestOtherModels",
+  APPROVE_MODELS: "approveModels",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

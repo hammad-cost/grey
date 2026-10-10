@@ -303,6 +303,45 @@ const datasetSelected = datasetEvent("dataset_selected", {
   },
 });
 
+const datasetSelectedFindNext = datasetEvent("dataset_selected", {
+  stage: "DATASET_SELECTED",
+  status: "complete",
+  brain_patch: { workflow_state: "DATASET_SELECTED", dataset_status: "selected" },
+  allowed_actions: ["findModels"],
+});
+
+/** A model event, shaped like the backend's streamed events. */
+function modelEvent(type: string, extra: Partial<GreyEvent> = {}): GreyEvent {
+  return {
+    type,
+    workspace_id: "w_123",
+    domain: "fyp",
+    workflow: "model_selection",
+    stage: "DATASET_SELECTED",
+    status: "running",
+    data: { label: `${type} label`, completed_steps: 1, total_steps: 4 },
+    brain_patch: {},
+    allowed_actions: [],
+    ...extra,
+  };
+}
+
+const modelStarted = modelEvent("model_search_started", { brain_patch: { model_status: "running" } });
+const modelsReady = modelEvent("models_ready", {
+  stage: "MODEL_SELECTION",
+  status: "awaiting_user",
+  brain_patch: {
+    workflow_state: "MODEL_SELECTION", model_plan_id: "m-1", model_status: "draft",
+    model_option_count: 2, model_researches_left: 2,
+  },
+  allowed_actions: ["approveModels", "requestOtherModels"],
+});
+const modelsApproved = modelEvent("models_approved", {
+  stage: "MODELS_APPROVED",
+  status: "complete",
+  brain_patch: { workflow_state: "MODELS_APPROVED", model_status: "approved" },
+});
+
 /** A streamed reply with these events, one JSON per line. */
 function streamOf(...events: GreyEvent[]) {
   return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
@@ -316,6 +355,7 @@ function Probe() {
     startProject, selectIndustry, selectBranch, startResearch, extractProblems, selectProblem,
     designFYP, adjustFYPDirection, approveFYPDirection, defineProject, moveScopeItem, approveScope,
     checkAINeed, recheckAIStrategy, approveAIStrategy, findDatasets, requestDatasetAlternative, selectDataset,
+    findModels, requestOtherModels, approveModels,
   } = useGreyActions();
   return (
     <>
@@ -338,6 +378,9 @@ function Probe() {
       <button onClick={() => findDatasets().catch(() => {})}>find datasets</button>
       <button onClick={() => requestDatasetAlternative("own_data").catch(() => {})}>own data</button>
       <button onClick={() => selectDataset("plan-1", "alternative").catch(() => {})}>select alternative</button>
+      <button onClick={() => findModels().catch(() => {})}>find models</button>
+      <button onClick={() => requestOtherModels("other_options").catch(() => {})}>other models</button>
+      <button onClick={() => approveModels("m-1").catch(() => {})}>approve models</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -993,5 +1036,56 @@ describe("GreyAgentProvider", () => {
     expect(readState().brainSummary).toMatchObject({
       datasetStatus: "selected", datasetSelected: "Vessel tracks", workflowState: "DATASET_SELECTED",
     });
+  });
+
+  it("selectDataset looks for models straight away when the backend allows it", async () => {
+    replyWith(projectCreated);
+    replyWith(datasetSelectedFindNext);
+    fetchMock.mockResolvedValueOnce(streamOf(modelStarted, modelsReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("select alternative"));
+    await waitFor(() => expect(readState().currentStage).toBe("MODEL_SELECTION"));
+
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/models$/);
+    expect(readState().brainSummary).toMatchObject({
+      datasetStatus: "selected", modelPlanId: "m-1", modelStatus: "draft", modelOptionCount: 2, modelResearchesLeft: 2,
+    });
+  });
+
+  it("findModels retries, requestOtherModels posts the preference", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(modelStarted, modelsReady));
+    fetchMock.mockResolvedValueOnce(streamOf(modelStarted, modelsReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("find models"));
+    await waitFor(() => expect(readState().currentStage).toBe("MODEL_SELECTION"));
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/models$/);
+
+    fireEvent.click(screen.getByText("other models"));
+    await waitFor(() => expect(fetchMock.mock.calls).toHaveLength(3));
+    const [url, options] = fetchMock.mock.calls[2];
+    expect(url).toMatch(/\/projects\/w_123\/models\/research$/);
+    expect(JSON.parse(options.body)).toEqual({ preference: "other_options" });
+  });
+
+  it("approveModels posts the plan id and finishes at MODELS_APPROVED", async () => {
+    replyWith(projectCreated);
+    replyWith(modelsApproved);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("approve models"));
+    await waitFor(() => expect(readState().currentStage).toBe("MODELS_APPROVED"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/models\/approve$/);
+    expect(JSON.parse(options.body)).toEqual({ plan_id: "m-1" });
   });
 });

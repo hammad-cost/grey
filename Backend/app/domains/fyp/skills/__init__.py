@@ -8,6 +8,8 @@ so workflows look skills up by name instead of creating them directly.
 from app.core.llm import LLMGateway
 from app.core.skills.registry import SkillRegistry
 from app.core.tools.search import SearchProvider
+from app.domains.fyp.skills.assess_feasibility import AssessFeasibilitySkill
+from app.domains.fyp.skills.assess_feasibility.fake import install_fake_answers as install_fake_feasibility_answers
 from app.domains.fyp.skills.classify_area import ClassifyAreaSkill
 from app.domains.fyp.skills.classify_area.fake import install_fake_answers as install_fake_area_answers
 from app.domains.fyp.skills.define_project import DefineProjectSkill
@@ -65,3 +67,5 @@ def register_fyp_skills(
         registry.register(PlanTechnologySkill(llm))
         install_fake_architecture_answers(llm)
         registry.register(DesignArchitectureSkill(llm))
+        install_fake_feasibility_answers(llm)
+        registry.register(AssessFeasibilitySkill(llm))

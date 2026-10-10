@@ -106,3 +106,8 @@ class RedesignArchitectureRequest(BaseModel):
 class ApproveTechnicalPlanRequest(BaseModel):
     """Body for POST /projects/{workspace_id}/architecture/approve — the id of the technical plan."""
     plan_id: str = Field(min_length=1)
+
+
+class AcceptFeasibilityRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/feasibility/accept — the id of the feasibility report."""
+    report_id: str = Field(min_length=1)

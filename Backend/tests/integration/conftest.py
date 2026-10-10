@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.api.ai_strategy import get_ai_strategy_graph
 from app.api.architecture import get_technical_plan_graph
 from app.api.datasets import get_dataset_graph
+from app.api.feasibility import get_feasibility_graph
 from app.api.fyp_design import get_fyp_design_graph
 from app.api.models import get_model_graph
 from app.api.project_definition import get_project_definition_graph
@@ -38,6 +39,8 @@ from app.domains.fyp.workflows.dataset_discovery import build_dataset_graph
 from app.domains.fyp.workflows.dataset_discovery import runner as dataset_runner
 from app.domains.fyp.workflows.discovery import build_discovery_graph
 from app.domains.fyp.workflows.discovery import problem_runner, research_runner
+from app.domains.fyp.workflows.feasibility import build_feasibility_graph
+from app.domains.fyp.workflows.feasibility import runner as feasibility_runner
 from app.domains.fyp.workflows.fyp_design import build_fyp_design_graph
 from app.domains.fyp.workflows.fyp_design import runner as fyp_runner
 from app.domains.fyp.workflows.model_selection import build_model_graph
@@ -79,6 +82,7 @@ async def client():
     test_model_graph = build_model_graph(MemorySaver(), skills=skills)
     test_technology_graph = build_technology_graph(MemorySaver(), skills=skills)
     test_technical_plan_graph = build_technical_plan_graph(MemorySaver(), skills=skills)
+    test_feasibility_graph = build_feasibility_graph(MemorySaver(), skills=skills)
 
     # --- Apply overrides ---
     app.dependency_overrides[get_session] = override_get_session
@@ -91,6 +95,7 @@ async def client():
     app.dependency_overrides[get_model_graph] = lambda: test_model_graph
     app.dependency_overrides[get_technology_graph] = lambda: test_technology_graph
     app.dependency_overrides[get_technical_plan_graph] = lambda: test_technical_plan_graph
+    app.dependency_overrides[get_feasibility_graph] = lambda: test_feasibility_graph
     research_runner._active_research.clear()
     problem_runner._active_extractions.clear()
     fyp_runner._active_designs.clear()
@@ -100,6 +105,7 @@ async def client():
     model_runner._active_searches.clear()
     technology_runner._active_plans.clear()
     architecture_runner._active_designs.clear()
+    feasibility_runner._active_assessments.clear()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -118,4 +124,5 @@ async def client():
     model_runner._active_searches.clear()
     technology_runner._active_plans.clear()
     architecture_runner._active_designs.clear()
+    feasibility_runner._active_assessments.clear()
     await engine.dispose()

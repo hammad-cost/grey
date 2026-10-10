@@ -9,6 +9,7 @@ from app.core.brain.schemas import (
     AIStrategyRun,
     ArchitectureRun,
     DatasetRun,
+    FeasibilityRun,
     ModelRun,
     TechnologyRun,
     FYPDesignRun,
@@ -21,6 +22,7 @@ from app.core.brain.schemas import (
 )
 from app.domains.fyp.workflows.ai_strategy.view import AIStrategyView
 from app.domains.fyp.workflows.dataset_discovery.view import DatasetView
+from app.domains.fyp.workflows.feasibility.view import FeasibilityView
 from app.domains.fyp.workflows.model_selection.view import ModelView
 from app.domains.fyp.workflows.technical_plan.view import TechnicalPlanView
 from app.domains.fyp.workflows.technology_plan.view import TechnologyView
@@ -97,3 +99,11 @@ class TechnicalPlanResponse(BaseModel):
     workflow_state: WorkflowState
     technical_plan: TechnicalPlanView | None = None   # None until the technology plan is approved
     latest_run: ArchitectureRun | None = None
+
+
+class FeasibilityResponse(BaseModel):
+    """Body for GET /projects/{workspace_id}/feasibility (Release 0.12)."""
+    workspace_id: str
+    workflow_state: WorkflowState
+    feasibility: FeasibilityView | None = None    # None until the technical plan is approved
+    latest_run: FeasibilityRun | None = None

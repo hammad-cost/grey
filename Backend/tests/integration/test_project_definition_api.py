@@ -155,7 +155,7 @@ async def test_approve_ends_release_0_6(client: AsyncClient):
     event = response.json()
     assert event["type"] == "scope_approved"
     assert event["stage"] == "SCOPE_APPROVED"
-    assert event["allowed_actions"] == []
+    assert event["allowed_actions"] == ["checkAINeed"]
     brain = (await client.get(f"/projects/{workspace_id}")).json()
     assert brain["workflow_state"] == "SCOPE_APPROVED"
     assert brain["project_definition"]["status"] == "approved"

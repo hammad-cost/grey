@@ -159,7 +159,7 @@ def scope_updated_event(workspace_id: str, view: ProjectDefinitionView, moved_ti
 
 
 def scope_approved_event(workspace_id: str, view: ProjectDefinitionView) -> GreyEvent:
-    """The student approved the scope. Release 0.6 ends here."""
+    """The student approved the scope. Next, Grey checks whether the project needs AI (Release 0.7)."""
     return build_event(
         type=EventType.SCOPE_APPROVED,
         workspace_id=workspace_id,
@@ -168,5 +168,5 @@ def scope_approved_event(workspace_id: str, view: ProjectDefinitionView) -> Grey
         status=EventStatus.COMPLETE,
         data={"definition": view.model_dump(mode="json")},
         brain_patch={"workflow_state": WorkflowState.SCOPE_APPROVED.value, **_view_patch(view)},
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.CHECK_AI_NEED],
     )

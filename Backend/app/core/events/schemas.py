@@ -59,6 +59,13 @@ class EventType(str, Enum):
     SCOPE_UPDATED = "scope_updated"
     SCOPE_APPROVED = "scope_approved"
 
+    # Release 0.7 — AI necessity check and AI strategy. Safe activity only, never reasoning.
+    AI_STRATEGY_STARTED = "ai_strategy_started"
+    AI_STRATEGY_PROGRESS = "ai_strategy_progress"
+    AI_STRATEGY_READY = "ai_strategy_ready"
+    AI_STRATEGY_FAILED = "ai_strategy_failed"
+    AI_STRATEGY_APPROVED = "ai_strategy_approved"
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
     DATASET_OPTIONS_READY = "dataset_options_ready"
@@ -102,6 +109,9 @@ class AllowedAction(str, Enum):
     DEFINE_PROJECT = "defineProject"               # write the problem definition, scope and solution (or retry)
     MODIFY_SCOPE = "modifyScope"                   # move a feature between core / optional / out of scope
     APPROVE_SCOPE = "approveScope"
+    CHECK_AI_NEED = "checkAINeed"                  # check whether the project needs AI, and plan it (or retry)
+    RECHECK_AI_STRATEGY = "recheckAIStrategy"      # check again with a preference (up to 2 times)
+    APPROVE_AI_STRATEGY = "approveAIStrategy"
     SELECT_DATASET = "selectDataset"
     REQUEST_DATASET_ALTERNATIVE = "requestDatasetAlternative"
     APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"

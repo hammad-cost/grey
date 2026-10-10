@@ -283,7 +283,7 @@ async def test_moves_work_after_a_restart(repo, setup, graph):
 
 # ── Approval ──────────────────────────────────────────────────────────────────
 
-async def test_approving_the_scope_ends_release_0_6(repo, setup, graph):
+async def test_approving_the_scope_ends_the_definition_workflow(repo, setup, graph):
     ready = await defined(repo, setup)
     definition_id = ready.data["definition"]["definition"]["id"]
 
@@ -292,7 +292,7 @@ async def test_approving_the_scope_ends_release_0_6(repo, setup, graph):
     assert event.type == EventType.SCOPE_APPROVED
     assert event.stage == WorkflowState.SCOPE_APPROVED.value
     assert event.status == EventStatus.COMPLETE
-    assert event.allowed_actions == []
+    assert event.allowed_actions == [AllowedAction.CHECK_AI_NEED]          # Release 0.7 continues here
     assert event.data["definition"]["definition"]["status"] == "approved"
 
     snapshot = await repo.get_snapshot(WS)

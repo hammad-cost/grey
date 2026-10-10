@@ -28,6 +28,7 @@ def register_skills() -> None:
             get_search_provider(settings),
             build_llm_gateway(settings),
             max_searches=settings.research_max_searches,
+            max_dataset_searches=settings.dataset_max_searches,
         )
 
 

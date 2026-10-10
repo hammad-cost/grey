@@ -14,6 +14,8 @@ from app.domains.fyp.skills.define_project import DefineProjectSkill
 from app.domains.fyp.skills.define_project.fake import install_fake_answers as install_fake_definition_answers
 from app.domains.fyp.skills.design_fyp import DesignFYPSkill
 from app.domains.fyp.skills.design_fyp.fake import install_fake_answers as install_fake_design_answers
+from app.domains.fyp.skills.find_datasets import FindDatasetsSkill
+from app.domains.fyp.skills.find_datasets.fake import install_fake_answers as install_fake_dataset_answers
 from app.domains.fyp.skills.plan_ai_strategy import PlanAIStrategySkill
 from app.domains.fyp.skills.plan_ai_strategy.fake import install_fake_answers as install_fake_strategy_answers
 from app.domains.fyp.skills.problem_extraction import ProblemExtractionSkill
@@ -26,14 +28,16 @@ def register_fyp_skills(
     search: SearchProvider,
     llm: LLMGateway | None = None,
     max_searches: int = 15,
+    max_dataset_searches: int = 6,
 ) -> None:
     """
     Register all FYP skills, giving each one the tools it needs.
 
     The skills that use the LLM gateway (problem extraction, the Release 0.5
-    classify_area and design_fyp, the Release 0.6 define_project and the
-    Release 0.7 plan_ai_strategy) are only registered when one is given. In fake
-    mode, the fake provider is also taught how to answer them.
+    classify_area and design_fyp, the Release 0.6 define_project, the
+    Release 0.7 plan_ai_strategy and the Release 0.8 find_datasets, which also
+    searches) are only registered when one is given. In fake mode, the fake
+    provider is also taught how to answer them.
     """
     registry.register(ResearchEvidenceSkill(search, max_searches=max_searches))
     if llm is not None:
@@ -47,3 +51,5 @@ def register_fyp_skills(
         registry.register(DefineProjectSkill(llm))
         install_fake_strategy_answers(llm)
         registry.register(PlanAIStrategySkill(llm))
+        install_fake_dataset_answers(llm)
+        registry.register(FindDatasetsSkill(search, llm, max_searches=max_dataset_searches))

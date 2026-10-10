@@ -29,7 +29,9 @@
  *   FEASIBILITY        → FeasibilityCard (review: accept)
  *   FEASIBILITY_ACCEPTED → AcceptedFeasibilityCard + SupervisorReadinessCard (Grey preparing the brief)
  *   SUPERVISOR_READINESS → SupervisorReadinessCard (review: checks, summary, likely questions; confirm)
- *   SUPERVISOR_READY   → SupervisorReadyCard (Release 0.13 ends here)
+ *   SUPERVISOR_READY   → SupervisorReadyCard + ProposalWorkspace (Grey writing the proposal)
+ *   PROPOSAL_GENERATION → ProposalWorkspace (review: rewrite a section, download, finalize)
+ *   COMPLETE           → CompletedProposalCard (the end of the FYP journey)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
@@ -42,6 +44,7 @@ import { ApprovedScopeCard } from "@/domains/fyp/components/ApprovedScopeCard";
 import { ApprovedTechnicalPlanCard } from "@/domains/fyp/components/ApprovedTechnicalPlanCard";
 import { ApprovedTechnologyCard } from "@/domains/fyp/components/ApprovedTechnologyCard";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
+import { CompletedProposalCard } from "@/domains/fyp/components/CompletedProposalCard";
 import { DatasetRecommendationCard } from "@/domains/fyp/components/DatasetRecommendationCard";
 import { FeasibilityCard } from "@/domains/fyp/components/FeasibilityCard";
 import { FunctionalAreaCard } from "@/domains/fyp/components/FunctionalAreaCard";
@@ -52,6 +55,7 @@ import { ModelRecommendationCard } from "@/domains/fyp/components/ModelRecommend
 import { ProblemOptions } from "@/domains/fyp/components/ProblemOptions";
 import { ProblemProgressCard } from "@/domains/fyp/components/ProblemProgressCard";
 import { ProjectDefinitionCard } from "@/domains/fyp/components/ProjectDefinitionCard";
+import { ProposalWorkspace } from "@/domains/fyp/components/ProposalWorkspace";
 import { ResearchProgressCard } from "@/domains/fyp/components/ResearchProgressCard";
 import { SelectedDatasetCard } from "@/domains/fyp/components/SelectedDatasetCard";
 import { SelectedProblemCard } from "@/domains/fyp/components/SelectedProblemCard";
@@ -65,7 +69,7 @@ const STAGES_WITH_OWN_PROGRESS = [
   "APPROVED_FYP", "SCOPE", "SCOPE_APPROVED", "AI_STRATEGY", "AI_STRATEGY_APPROVED", "DATASET_DISCOVERY",
   "DATASET_SELECTED", "MODEL_SELECTION", "MODELS_APPROVED", "TECHNOLOGY_PLAN",
   "TECHNOLOGY_APPROVED", "ARCHITECTURE", "TECHNICAL_PLAN_APPROVED", "FEASIBILITY",
-  "FEASIBILITY_ACCEPTED", "SUPERVISOR_READINESS",
+  "FEASIBILITY_ACCEPTED", "SUPERVISOR_READINESS", "SUPERVISOR_READY", "PROPOSAL_GENERATION",
 ];
 
 export default function Home() {
@@ -188,6 +192,12 @@ export default function Home() {
         <div className="flex flex-col gap-4 mt-4">
           <SupervisorReadinessCard />
           <SupervisorReadyCard />
+        </div>
+
+        {/* ── Proposal (Release 0.14) — the end of the journey ────────────── */}
+        <div className="flex flex-col gap-4 mt-4">
+          <ProposalWorkspace />
+          <CompletedProposalCard />
         </div>
 
       </div>

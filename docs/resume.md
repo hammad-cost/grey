@@ -23,6 +23,22 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 | 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | ✅ done |
 | 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | building |
 
+## Release 0.14 plan — Proposal generation (autonomous run, 2026-10-11)
+
+Scope: blueprint Step 25 (§36 Proposal Generation, §37 Proposal Traceability). Boundary: `SUPERVISOR_READY → (generate) → PROPOSAL_GENERATION (review: ≤3 section rewrites) → COMPLETE`. The last release of the MVP journey.
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | Brain: `proposal_run`, `proposal` (the 23 blueprint sections in order, each with paragraphs / items, its sources and who wrote it; numbered references); `proposal_rules.py` (every section once in order; citations only to existing references); repository + snapshot | |
+| 2 | Skill `generate_proposal`: **11 sections built in plain code from the Brain** (title, scope, functional requirements, dataset, AI / ML approach, technology stack, architecture, hardware, evaluation, risks, timeline) and **references from the verified evidence sources**; **11 narrative sections written by the model in 3 small calls** (`writing` profile) — introduction / background / problem statement / motivation / real-world evidence; proposed solution / aim / objectives / methodology; expected outcomes / limitations; checks (citations, numbers, links, length); a single section can be rewritten; prompt; fake answers; Markdown export in code | |
+| 3 | `proposal` workflow (generate → review interrupt: rewrite a section ↺ / finalize → END), runner, events, view; `supervisor_ready_confirmed` allows `generateProposal` | |
+| 4 | API: `POST /proposal` (stream), `POST /proposal/rewrite` (stream, `{section}`), `POST /proposal/finalize`, `GET /proposal`, `GET /proposal/markdown` | |
+| 5 | Frontend adapter: `generateProposal`, `rewriteProposalSection`, `finalizeProposal`; auto-start after `confirmSupervisorReady` | |
+| 6 | `ProposalWorkspace` (table of contents, every section with its sources, references, rewrite buttons, Download as Markdown), `CompletedProposalCard`; `proposal.ts` | |
+| 7 | Docs + full verification + fake e2e of the whole journey + live Groq run | |
+
+Decisions: traceability (§37) — every section lists where it came from; facts sections are never written by the model; the model may cite only `[n]` numbers of real evidence sources; at most 3 section rewrites (model-written sections only); finalize with confirm → `COMPLETE`; export as Markdown (PDF / Word later).
+
 ## Release 0.13 plan — Supervisor readiness (autonomous run, 2026-10-11)
 
 Scope: blueprint Steps 22–24 (§33 Supervisor Readiness Check, §34 Supervisor-Ready Summary, §35 Likely Supervisor Questions).

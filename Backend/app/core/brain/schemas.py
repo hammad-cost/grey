@@ -1273,6 +1273,111 @@ class ReadinessRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Proposal generation (Release 0.14) ────────────────────────────────────────
+
+MAX_PROPOSAL_REWRITES = 3
+
+
+class ProposalSectionId(str, Enum):
+    """The proposal sections (blueprint §36), in the blueprint's order."""
+    PROJECT_TITLE = "project_title"
+    INTRODUCTION = "introduction"
+    BACKGROUND = "background"
+    PROBLEM_STATEMENT = "problem_statement"
+    MOTIVATION = "motivation"
+    REAL_WORLD_EVIDENCE = "real_world_evidence"
+    PROPOSED_SOLUTION = "proposed_solution"
+    AIM = "aim"
+    OBJECTIVES = "objectives"
+    SCOPE = "scope"
+    FUNCTIONAL_REQUIREMENTS = "functional_requirements"
+    METHODOLOGY = "methodology"
+    DATASET = "dataset"
+    AI_ML_APPROACH = "ai_ml_approach"
+    TECHNOLOGY_STACK = "technology_stack"
+    SYSTEM_ARCHITECTURE = "system_architecture"
+    HARDWARE_REQUIREMENTS = "hardware_requirements"
+    EVALUATION_PLAN = "evaluation_plan"
+    EXPECTED_OUTCOMES = "expected_outcomes"
+    RISKS = "risks"
+    LIMITATIONS = "limitations"
+    TIMELINE = "timeline"
+    REFERENCES = "references"
+
+
+class WrittenBy(str, Enum):
+    GREY = "grey"      # built in plain code from the Project Brain
+    MODEL = "model"    # written by the language model from the Project Brain
+
+
+class ProposalSection(BaseModel):
+    id: ProposalSectionId
+    title: str = Field(min_length=1)
+    paragraphs: list[str] = []
+    items: list[str] = []                     # a bullet or numbered list, when the section has one
+    sources: list[str] = Field(min_length=1)  # traceability: which approved decisions it comes from (§37)
+    written_by: WrittenBy
+
+
+class ProposalReference(BaseModel):
+    """A verified evidence source, cited in the text as [number]."""
+    number: int = Field(ge=1)
+    title: str = Field(min_length=1)
+    organization: str = Field(min_length=1)
+    url: str = Field(pattern=r"^https?://\S+$")
+    published: str | None = None
+    source_type: str = Field(min_length=1)
+
+
+class Proposal(BaseModel):
+    """The FYP proposal, generated from the Project Brain. Rules in proposal_rules.py."""
+    title: str = Field(min_length=1)
+    sections: list[ProposalSection] = Field(min_length=23, max_length=23)
+    references: list[ProposalReference] = []
+
+
+class ProposalStatus(str, Enum):
+    DRAFT = "draft"
+    FINAL = "final"
+
+
+class StoredProposal(BaseModel):
+    """The proposal as read back from the Project Brain."""
+    id: str
+    workspace_id: str
+    supervisor_brief_id: str
+    run_id: str
+    status: ProposalStatus
+    proposal: Proposal
+    rewrites_used: int = 0
+    created_at: datetime
+    updated_at: datetime
+    finalized_at: datetime | None = None
+
+
+class ProposalRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class ProposalRun(BaseModel):
+    """One attempt at the proposal (the full proposal, or a rewrite of one section)."""
+    id: str
+    workspace_id: str
+    supervisor_brief_id: str
+    section: ProposalSectionId | None = None    # set for a rewrite
+    status: ProposalRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -1340,6 +1445,10 @@ class WorkspaceBrainSnapshot(BaseModel):
     # Supervisor readiness (Release 0.13).
     supervisor_brief: StoredSupervisorBrief | None = None
     readiness_run: ReadinessRun | None = None
+
+    # Proposal generation (Release 0.14).
+    proposal: StoredProposal | None = None
+    proposal_run: ProposalRun | None = None
 
     created_at: datetime
     updated_at: datetime

@@ -7,7 +7,8 @@ problem_run, problem_candidate, problem_evidence, functional_area,
 fyp_design_run, fyp_design, project_definition_run, project_definition,
 scope_item, ai_strategy_run, ai_strategy, dataset_run, dataset_plan, model_run, model_plan,
 technology_run, technology_plan, architecture_run, technical_plan,
-feasibility_run, feasibility_report, readiness_run, supervisor_brief).
+feasibility_run, feasibility_report, readiness_run, supervisor_brief,
+proposal_run, proposal).
 Everything else (API routes, workflows, skills) calls this repository —
 they never touch the database directly.
 
@@ -40,6 +41,8 @@ from app.core.brain.models import (
     ProblemRunRecord,
     ProjectDefinitionRecord,
     ProjectDefinitionRunRecord,
+    ProposalRecord,
+    ProposalRunRecord,
     ReadinessRunRecord,
     ResearchRunRecord,
     ScopeItemRecord,
@@ -51,7 +54,14 @@ from app.core.brain.models import (
 )
 from app.core.brain.ai_strategy_rules import check_strategy, recheck_problem
 from app.core.brain.dataset_rules import check_plan, research_problem
-from app.core.brain import architecture_rules, feasibility_rules, model_rules, supervisor_rules, technology_rules
+from app.core.brain import (
+    architecture_rules,
+    feasibility_rules,
+    model_rules,
+    proposal_rules,
+    supervisor_rules,
+    technology_rules,
+)
 from app.core.brain.ai_strategy_rules import uses_ai
 from app.core.brain.schemas import (
     MAX_AI_STRATEGY_RECHECKS,
@@ -59,6 +69,7 @@ from app.core.brain.schemas import (
     MAX_DATASET_RESEARCHES,
     MAX_FYP_ADJUSTMENTS,
     MAX_MODEL_RESEARCHES,
+    MAX_PROPOSAL_REWRITES,
     MAX_TECHNOLOGY_REPLANS,
     AIStrategy,
     AIStrategyPreference,
@@ -113,6 +124,12 @@ from app.core.brain.schemas import (
     StoredTechnicalPlan,
     StoredFeasibilityReport,
     StoredSupervisorBrief,
+    StoredProposal,
+    Proposal,
+    ProposalRun,
+    ProposalRunStatus,
+    ProposalSectionId,
+    ProposalStatus,
     ReadinessRun,
     ReadinessRunStatus,
     SupervisorBrief,
@@ -171,6 +188,9 @@ STALE_FEASIBILITY_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for supervisor briefs (Release 0.13).
 STALE_READINESS_RUN_AFTER = timedelta(minutes=10)
+
+# The same rule for proposals (Release 0.14).
+STALE_PROPOSAL_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for project definition runs (Release 0.6).
 STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
@@ -262,6 +282,14 @@ class ReadinessRunAlreadyRunningError(Exception):
 
 class ReadinessError(ValueError):
     """The supervisor readiness step isn't allowed now."""
+
+
+class ProposalRunAlreadyRunningError(Exception):
+    """A proposal is already being written for this project."""
+
+
+class ProposalError(ValueError):
+    """The proposal step isn't allowed now (wrong stage, no rewrites left, …)."""
 
 
 class FYPDesignError(ValueError):
@@ -429,6 +457,8 @@ class WorkspaceBrainRepository:
         snapshot.feasibility_run = await self.get_latest_feasibility_run(record.workspace_id)
         snapshot.supervisor_brief = await self.get_supervisor_brief(record.workspace_id)
         snapshot.readiness_run = await self.get_latest_readiness_run(record.workspace_id)
+        snapshot.proposal = await self.get_proposal(record.workspace_id)
+        snapshot.proposal_run = await self.get_latest_proposal_run(record.workspace_id)
         return snapshot
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -2956,3 +2986,215 @@ class WorkspaceBrainRepository:
         await self._session.commit()
         await self._session.refresh(record)
         return self._to_stored_brief(record)
+
+    # ── Proposal generation (Release 0.14) ────────────────────────────────────
+
+    async def _proposal_record(self, workspace_id: str) -> ProposalRecord | None:
+        result = await self._session.execute(
+            select(ProposalRecord).where(ProposalRecord.workspace_id == workspace_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _latest_proposal_run_record(self, workspace_id: str) -> ProposalRunRecord | None:
+        result = await self._session.execute(
+            select(ProposalRunRecord)
+            .where(ProposalRunRecord.workspace_id == workspace_id)
+            .order_by(ProposalRunRecord.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_proposal_run_record(self, run_id: str) -> ProposalRunRecord:
+        run = await self._session.get(ProposalRunRecord, run_id)
+        if run is None:
+            raise ValueError(f"Proposal run '{run_id}' not found.")
+        return run
+
+    @staticmethod
+    def _to_stored_proposal(record: ProposalRecord) -> StoredProposal:
+        return StoredProposal(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            supervisor_brief_id=record.supervisor_brief_id,
+            run_id=record.run_id,
+            status=ProposalStatus(record.status),
+            proposal=record.proposal,
+            rewrites_used=record.rewrites_used,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            finalized_at=record.finalized_at,
+        )
+
+    async def get_proposal(self, workspace_id: str) -> StoredProposal | None:
+        """The proposal (draft or final), or None until Grey has written it."""
+        record = await self._proposal_record(workspace_id)
+        return self._to_stored_proposal(record) if record else None
+
+    async def get_latest_proposal_run(self, workspace_id: str) -> ProposalRun | None:
+        run = await self._latest_proposal_run_record(workspace_id)
+        return ProposalRun.model_validate(run) if run else None
+
+    async def start_proposal_run(self, workspace_id: str, section: ProposalSectionId | None = None) -> ProposalRun:
+        """
+        Record that Grey has started writing the proposal (or rewriting one section).
+
+        Without a section: allowed only at SUPERVISOR_READY with no proposal yet.
+        With a section (a rewrite): only at PROPOSAL_GENERATION while the proposal is
+        a draft, rewrites are left, and the section is one the model writes.
+
+        Raises:
+            ValueError, ProposalError, ProposalRunAlreadyRunningError (unless the running one is stale).
+        """
+        workspace = await self._require_record(workspace_id)
+        brief = await self._brief_record(workspace_id)
+        proposal = await self._proposal_record(workspace_id)
+
+        if section is None:
+            if (
+                workspace.workflow_state != WorkflowState.SUPERVISOR_READY.value
+                or brief is None
+                or brief.status != SupervisorBriefStatus.CONFIRMED.value
+            ):
+                raise ProposalError(
+                    f"Grey writes the proposal only after you're ready for your supervisor (stage: {workspace.workflow_state})."
+                )
+            if proposal is not None:
+                raise ProposalError("Grey has already written the proposal.")
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.PROPOSAL_GENERATION.value
+                or proposal is None
+                or proposal.status != ProposalStatus.DRAFT.value
+            ):
+                raise ProposalError(f"There is no proposal to change (stage: {workspace.workflow_state}).")
+            if proposal.rewrites_used >= MAX_PROPOSAL_REWRITES:
+                raise ProposalError(
+                    f"All {MAX_PROPOSAL_REWRITES} rewrites have been used. You can finalize the proposal."
+                )
+            problem = proposal_rules.rewrite_problem(section)
+            if problem is not None:
+                raise ProposalError(problem)
+
+        latest = await self._latest_proposal_run_record(workspace_id)
+        if latest is not None and latest.status == ProposalRunStatus.RUNNING.value:
+            age = datetime.now(timezone.utc) - _as_utc(latest.started_at)
+            if age < STALE_PROPOSAL_RUN_AFTER:
+                raise ProposalRunAlreadyRunningError(
+                    f"Grey is already writing the proposal for workspace '{workspace_id}'."
+                )
+            latest.status = ProposalRunStatus.FAILED.value
+            latest.error = "Proposal did not finish (marked as stale)."
+            latest.completed_at = datetime.now(timezone.utc)
+
+        run = ProposalRunRecord(
+            workspace_id=workspace_id,
+            supervisor_brief_id=brief.id,
+            section=section.value if section else None,
+            status=ProposalRunStatus.RUNNING.value,
+            started_at=datetime.now(timezone.utc),
+        )
+        self._session.add(run)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ProposalRun.model_validate(run)
+
+    async def complete_proposal_run(
+        self,
+        run_id: str,
+        proposal: Proposal,
+        *,
+        proposal_id: str | None = None,
+        provider: str,
+        model: str,
+        prompt_version: str,
+    ) -> StoredProposal:
+        """
+        Save the proposal and mark the run complete, in one commit.
+        First proposal → stage PROPOSAL_GENERATION. Rewrite → the draft is replaced, one rewrite used.
+
+        Raises:
+            ValueError:          the run isn't running, or the stage is wrong.
+            ProposalRuleError:   the proposal breaks a rule in proposal_rules.py.
+        """
+        run = await self._require_proposal_run_record(run_id)
+        if run.status != ProposalRunStatus.RUNNING.value:
+            raise ValueError(f"Proposal run '{run_id}' is not running (status: {run.status}).")
+        proposal_rules.check_proposal(proposal)
+        workspace = await self._require_record(run.workspace_id)
+        record = await self._proposal_record(run.workspace_id)
+        now = datetime.now(timezone.utc)
+
+        if run.section is None:
+            if workspace.workflow_state != WorkflowState.SUPERVISOR_READY.value or record is not None:
+                raise ValueError(f"The proposal can't be saved now (stage: {workspace.workflow_state}).")
+            record = ProposalRecord(
+                id=proposal_id or str(uuid.uuid4()),
+                workspace_id=run.workspace_id,
+                supervisor_brief_id=run.supervisor_brief_id,
+                run_id=run.id,
+                status=ProposalStatus.DRAFT.value,
+                proposal=proposal.model_dump(mode="json"),
+                rewrites_used=0,
+                created_at=now,
+                updated_at=now,
+            )
+            self._session.add(record)
+            workspace.workflow_state = WorkflowState.PROPOSAL_GENERATION.value
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.PROPOSAL_GENERATION.value
+                or record is None
+                or record.status != ProposalStatus.DRAFT.value
+            ):
+                raise ValueError(f"The proposal can't be replaced now (stage: {workspace.workflow_state}).")
+            record.proposal = proposal.model_dump(mode="json")
+            record.run_id = run.id
+            record.rewrites_used += 1
+            record.updated_at = now
+
+        run.status = ProposalRunStatus.COMPLETE.value
+        run.completed_at = now
+        run.provider = provider
+        run.model = model
+        run.prompt_version = prompt_version
+        workspace.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_proposal(record)
+
+    async def fail_proposal_run(self, run_id: str, error: str) -> ProposalRun:
+        """Mark a proposal attempt as failed (a failed rewrite doesn't use one up)."""
+        run = await self._require_proposal_run_record(run_id)
+        run.status = ProposalRunStatus.FAILED.value
+        run.error = error
+        run.completed_at = datetime.now(timezone.utc)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ProposalRun.model_validate(run)
+
+    async def finalize_proposal(self, workspace_id: str, proposal_id: str) -> StoredProposal:
+        """
+        Record that the student finalized the proposal. The project moves to
+        COMPLETE in the same commit — the end of the FYP journey.
+
+        Raises:
+            ValueError, ProposalError (no draft proposal, or `proposal_id` isn't this project's).
+        """
+        workspace = await self._require_record(workspace_id)
+        record = await self._proposal_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.PROPOSAL_GENERATION.value
+            or record is None
+            or record.status != ProposalStatus.DRAFT.value
+        ):
+            raise ProposalError(f"There is no proposal to finalize (stage: {workspace.workflow_state}).")
+        if record.id != proposal_id:
+            raise ProposalError(f"'{proposal_id}' is not this project's proposal.")
+        now = datetime.now(timezone.utc)
+        record.status = ProposalStatus.FINAL.value
+        record.finalized_at = now
+        workspace.workflow_state = WorkflowState.COMPLETE.value
+        workspace.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_proposal(record)

@@ -23,6 +23,8 @@ from app.domains.fyp.skills.find_datasets.fake import install_fake_answers as in
 from app.domains.fyp.skills.find_models import FindModelsSkill
 from app.domains.fyp.skills.find_models.fake import install_fake_answers as install_fake_model_answers
 from app.domains.fyp.skills.plan_technology import PlanTechnologySkill
+from app.domains.fyp.skills.prepare_supervisor_brief import PrepareSupervisorBriefSkill
+from app.domains.fyp.skills.prepare_supervisor_brief.fake import install_fake_answers as install_fake_brief_answers
 from app.domains.fyp.skills.plan_technology.fake import install_fake_answers as install_fake_technology_answers
 from app.domains.fyp.skills.plan_ai_strategy import PlanAIStrategySkill
 from app.domains.fyp.skills.plan_ai_strategy.fake import install_fake_answers as install_fake_strategy_answers
@@ -69,3 +71,5 @@ def register_fyp_skills(
         registry.register(DesignArchitectureSkill(llm))
         install_fake_feasibility_answers(llm)
         registry.register(AssessFeasibilitySkill(llm))
+        install_fake_brief_answers(llm)
+        registry.register(PrepareSupervisorBriefSkill(llm))

@@ -12,6 +12,8 @@ from .repository import (
     ProjectDefinitionError,
     ProjectDefinitionRunAlreadyRunningError,
     ResearchAlreadyRunningError,
+    TechnologyError,
+    TechnologyRunAlreadyRunningError,
     WorkspaceBrainRepository,
 )
 from .schemas import (
@@ -43,6 +45,8 @@ __all__ = [
     "ResearchAlreadyRunningError",
     "ResearchRun",
     "StoredProblemCandidate",
+    "TechnologyError",
+    "TechnologyRunAlreadyRunningError",
     "WorkspaceBrainRepository",
     "WorkspaceBrainSnapshot",
     "create_all_tables",

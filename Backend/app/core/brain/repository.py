@@ -5,7 +5,8 @@ The only place in the codebase that reads from and writes to the
 Project Brain tables (workspace_brain, research_run, evidence_source,
 problem_run, problem_candidate, problem_evidence, functional_area,
 fyp_design_run, fyp_design, project_definition_run, project_definition,
-scope_item, ai_strategy_run, ai_strategy, dataset_run, dataset_plan, model_run, model_plan).
+scope_item, ai_strategy_run, ai_strategy, dataset_run, dataset_plan, model_run, model_plan,
+technology_run, technology_plan).
 Everything else (API routes, workflows, skills) calls this repository —
 they never touch the database directly.
 
@@ -37,16 +38,20 @@ from app.core.brain.models import (
     ProjectDefinitionRunRecord,
     ResearchRunRecord,
     ScopeItemRecord,
+    TechnologyPlanRecord,
+    TechnologyRunRecord,
     WorkspaceBrainRecord,
 )
 from app.core.brain.ai_strategy_rules import check_strategy, recheck_problem
 from app.core.brain.dataset_rules import check_plan, research_problem
-from app.core.brain import model_rules
+from app.core.brain import model_rules, technology_rules
+from app.core.brain.ai_strategy_rules import uses_ai
 from app.core.brain.schemas import (
     MAX_AI_STRATEGY_RECHECKS,
     MAX_DATASET_RESEARCHES,
     MAX_FYP_ADJUSTMENTS,
     MAX_MODEL_RESEARCHES,
+    MAX_TECHNOLOGY_REPLANS,
     AIStrategy,
     AIStrategyPreference,
     AIStrategyRun,
@@ -96,6 +101,12 @@ from app.core.brain.schemas import (
     StoredAIStrategy,
     StoredDatasetPlan,
     StoredModelPlan,
+    StoredTechnologyPlan,
+    TechnologyPlan,
+    TechnologyPlanStatus,
+    TechnologyPreference,
+    TechnologyRun,
+    TechnologyRunStatus,
     StoredProjectDefinition,
     StoredScopeItem,
     WorkflowState,
@@ -124,6 +135,9 @@ STALE_DATASET_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for model searches (Release 0.9).
 STALE_MODEL_RUN_AFTER = timedelta(minutes=10)
+
+# The same rule for technology plans (Release 0.10).
+STALE_TECHNOLOGY_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for project definition runs (Release 0.6).
 STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
@@ -183,6 +197,14 @@ class ModelRunAlreadyRunningError(Exception):
 
 class ModelError(ValueError):
     """The model step isn't allowed now (wrong stage, no re-searches left, …)."""
+
+
+class TechnologyRunAlreadyRunningError(Exception):
+    """A technology plan is already being made for this project."""
+
+
+class TechnologyError(ValueError):
+    """The technology step isn't allowed now (wrong stage, no re-plans left, …)."""
 
 
 class FYPDesignError(ValueError):
@@ -342,6 +364,8 @@ class WorkspaceBrainRepository:
         snapshot.dataset_run = await self.get_latest_dataset_run(record.workspace_id)
         snapshot.model_plan = await self.get_model_plan(record.workspace_id)
         snapshot.model_run = await self.get_latest_model_run(record.workspace_id)
+        snapshot.technology_plan = await self.get_technology_plan(record.workspace_id)
+        snapshot.technology_run = await self.get_latest_technology_run(record.workspace_id)
         return snapshot
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -2089,3 +2113,221 @@ class WorkspaceBrainRepository:
         await self._session.commit()
         await self._session.refresh(record)
         return self._to_stored_model_plan(record)
+
+    # ── Technology stack and hardware (Release 0.10) ──────────────────────────
+
+    async def _technology_plan_record(self, workspace_id: str) -> TechnologyPlanRecord | None:
+        result = await self._session.execute(
+            select(TechnologyPlanRecord).where(TechnologyPlanRecord.workspace_id == workspace_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _latest_technology_run_record(self, workspace_id: str) -> TechnologyRunRecord | None:
+        result = await self._session.execute(
+            select(TechnologyRunRecord)
+            .where(TechnologyRunRecord.workspace_id == workspace_id)
+            .order_by(TechnologyRunRecord.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_technology_run_record(self, run_id: str) -> TechnologyRunRecord:
+        run = await self._session.get(TechnologyRunRecord, run_id)
+        if run is None:
+            raise ValueError(f"Technology run '{run_id}' not found.")
+        return run
+
+    @staticmethod
+    def _to_stored_technology_plan(record: TechnologyPlanRecord) -> StoredTechnologyPlan:
+        return StoredTechnologyPlan(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            model_plan_id=record.model_plan_id,
+            run_id=record.run_id,
+            status=TechnologyPlanStatus(record.status),
+            plan=record.plan,
+            replans_used=record.replans_used,
+            preference=record.preference,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            approved_at=record.approved_at,
+        )
+
+    async def _project_uses_ai(self, workspace_id: str) -> bool:
+        strategy = await self._ai_strategy_record(workspace_id)
+        return strategy is not None and uses_ai(AIStrategy.model_validate(strategy.strategy).necessity)
+
+    async def get_technology_plan(self, workspace_id: str) -> StoredTechnologyPlan | None:
+        """The technology plan (draft or approved), or None until Grey has planned it."""
+        record = await self._technology_plan_record(workspace_id)
+        return self._to_stored_technology_plan(record) if record else None
+
+    async def get_latest_technology_run(self, workspace_id: str) -> TechnologyRun | None:
+        """The most recent technology plan attempt, or None."""
+        run = await self._latest_technology_run_record(workspace_id)
+        return TechnologyRun.model_validate(run) if run else None
+
+    async def start_technology_run(
+        self, workspace_id: str, preference: TechnologyPreference | None = None
+    ) -> TechnologyRun:
+        """
+        Record that Grey has started the technology plan.
+
+        Without a preference: allowed only at MODELS_APPROVED with no plan yet (a
+        failed attempt can be retried). With a preference (a re-plan): allowed only
+        at TECHNOLOGY_PLAN while the plan is a draft and re-plans are left.
+
+        Raises:
+            ValueError, TechnologyError, TechnologyRunAlreadyRunningError (unless the running one is stale).
+        """
+        workspace = await self._require_record(workspace_id)
+        models = await self._model_plan_record(workspace_id)
+        plan = await self._technology_plan_record(workspace_id)
+
+        if preference is None:
+            if (
+                workspace.workflow_state != WorkflowState.MODELS_APPROVED.value
+                or models is None
+                or models.status != ModelPlanStatus.APPROVED.value
+            ):
+                raise TechnologyError(
+                    f"Grey plans the technology only after the model plan is approved (stage: {workspace.workflow_state})."
+                )
+            if plan is not None:
+                raise TechnologyError("Grey has already planned the technology.")
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.TECHNOLOGY_PLAN.value
+                or plan is None
+                or plan.status != TechnologyPlanStatus.DRAFT.value
+            ):
+                raise TechnologyError(f"There is no technology plan to change (stage: {workspace.workflow_state}).")
+            if plan.replans_used >= MAX_TECHNOLOGY_REPLANS:
+                raise TechnologyError(
+                    f"All {MAX_TECHNOLOGY_REPLANS} re-plans have been used. You can approve the technology plan."
+                )
+
+        latest = await self._latest_technology_run_record(workspace_id)
+        if latest is not None and latest.status == TechnologyRunStatus.RUNNING.value:
+            age = datetime.now(timezone.utc) - _as_utc(latest.started_at)
+            if age < STALE_TECHNOLOGY_RUN_AFTER:
+                raise TechnologyRunAlreadyRunningError(
+                    f"Grey is already planning the technology for workspace '{workspace_id}'."
+                )
+            latest.status = TechnologyRunStatus.FAILED.value
+            latest.error = "Technology plan did not finish (marked as stale)."
+            latest.completed_at = datetime.now(timezone.utc)
+
+        run = TechnologyRunRecord(
+            workspace_id=workspace_id,
+            model_plan_id=models.id,
+            preference=preference.value if preference else None,
+            status=TechnologyRunStatus.RUNNING.value,
+            started_at=datetime.now(timezone.utc),
+        )
+        self._session.add(run)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return TechnologyRun.model_validate(run)
+
+    async def complete_technology_run(
+        self,
+        run_id: str,
+        plan: TechnologyPlan,
+        *,
+        plan_id: str | None = None,
+        provider: str,
+        model: str,
+        prompt_version: str,
+    ) -> StoredTechnologyPlan:
+        """
+        Save a technology plan and mark the run complete, in one commit.
+        First plan → stage TECHNOLOGY_PLAN. Re-plan → the draft is replaced, one re-plan used.
+
+        Raises:
+            ValueError:           the run isn't running, or the stage is wrong.
+            TechnologyRuleError:  the plan breaks a rule in technology_rules.py.
+        """
+        run = await self._require_technology_run_record(run_id)
+        if run.status != TechnologyRunStatus.RUNNING.value:
+            raise ValueError(f"Technology run '{run_id}' is not running (status: {run.status}).")
+        technology_rules.check_plan(plan, uses_ai=await self._project_uses_ai(run.workspace_id))
+        workspace = await self._require_record(run.workspace_id)
+        record = await self._technology_plan_record(run.workspace_id)
+        now = datetime.now(timezone.utc)
+
+        if run.preference is None:
+            if workspace.workflow_state != WorkflowState.MODELS_APPROVED.value or record is not None:
+                raise ValueError(f"The technology plan can't be saved now (stage: {workspace.workflow_state}).")
+            record = TechnologyPlanRecord(
+                id=plan_id or str(uuid.uuid4()),
+                workspace_id=run.workspace_id,
+                model_plan_id=run.model_plan_id,
+                run_id=run.id,
+                status=TechnologyPlanStatus.DRAFT.value,
+                plan=plan.model_dump(mode="json"),
+                replans_used=0,
+                created_at=now,
+                updated_at=now,
+            )
+            self._session.add(record)
+            workspace.workflow_state = WorkflowState.TECHNOLOGY_PLAN.value
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.TECHNOLOGY_PLAN.value
+                or record is None
+                or record.status != TechnologyPlanStatus.DRAFT.value
+            ):
+                raise ValueError(f"The technology plan can't be replaced now (stage: {workspace.workflow_state}).")
+            record.plan = plan.model_dump(mode="json")
+            record.run_id = run.id
+            record.replans_used += 1
+            record.preference = run.preference
+            record.updated_at = now
+
+        run.status = TechnologyRunStatus.COMPLETE.value
+        run.completed_at = now
+        run.provider = provider
+        run.model = model
+        run.prompt_version = prompt_version
+        workspace.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_technology_plan(record)
+
+    async def fail_technology_run(self, run_id: str, error: str) -> TechnologyRun:
+        """Mark a technology plan attempt as failed (a failed re-plan doesn't use one up)."""
+        run = await self._require_technology_run_record(run_id)
+        run.status = TechnologyRunStatus.FAILED.value
+        run.error = error
+        run.completed_at = datetime.now(timezone.utc)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return TechnologyRun.model_validate(run)
+
+    async def approve_technology_plan(self, workspace_id: str, plan_id: str) -> StoredTechnologyPlan:
+        """
+        Record the student's approval of the technology plan (a mandatory decision).
+        The project moves to TECHNOLOGY_APPROVED in the same commit.
+
+        Raises:
+            ValueError, TechnologyError (no draft plan, or `plan_id` isn't this project's).
+        """
+        workspace = await self._require_record(workspace_id)
+        record = await self._technology_plan_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.TECHNOLOGY_PLAN.value
+            or record is None
+            or record.status != TechnologyPlanStatus.DRAFT.value
+        ):
+            raise TechnologyError(f"There is no technology plan to approve (stage: {workspace.workflow_state}).")
+        if record.id != plan_id:
+            raise TechnologyError(f"'{plan_id}' is not this project's technology plan.")
+        now = datetime.now(timezone.utc)
+        record.status = TechnologyPlanStatus.APPROVED.value
+        record.approved_at = now
+        workspace.workflow_state = WorkflowState.TECHNOLOGY_APPROVED.value
+        workspace.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_technology_plan(record)

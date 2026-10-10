@@ -23,6 +23,23 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 | 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | planned |
 | 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | planned |
 
+## Release 0.10 plan — Technology stack and hardware (autonomous run, 2026-10-11)
+
+Scope: blueprint Steps 17–18 (§27 Technology Stack Guidance, §28 Recommendation Principle, §29 Hardware and Infrastructure).
+Boundary: `MODELS_APPROVED → (plan) → TECHNOLOGY_PLAN (review: ≤2 "make it simpler / cheaper") → TECHNOLOGY_APPROVED`.
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | Brain: `technology_run`, `technology_plan` (summary, stack choices per area, hardware items); stage `TECHNOLOGY_APPROVED`; `technology_rules.py`; repository + snapshot | |
+| 2 | Skill `plan_technology` (LLM, `structured_reasoning`): one choice per needed area (frontend, backend, database, AI/ML, training, deployment) with why it suits THIS project; hardware items (normal laptop, GPU, Colab, cloud GPU, camera, sensors, Arduino, Raspberry Pi, Jetson, mobile, other) with purpose, essential?, cost level, alternative; checks; prompt; fake answers | |
+| 3 | `technology_plan` workflow (plan → review interrupt: replan ↺ / approve → END), runner, events, view; `models_approved` allows `planTechnology` | |
+| 4 | API: `POST /technology` (stream), `POST /technology/replan` (stream), `POST /technology/approve`, `GET /technology` | |
+| 5 | Frontend adapter: `planTechnology`, `replanTechnology`, `approveTechnology`; auto-start after `approveModels` | |
+| 6 | `TechnologyPlanCard`, `ApprovedTechnologyCard`; `technology.ts` | |
+| 7 | Docs + full verification + fake e2e + live Groq run | |
+
+Decisions: decisions, not option lists (§28): exactly one choice per area, only the areas the project needs (2–6), each with a project-specific reason; AI/ML and training areas only when the AI strategy uses AI (and AI/ML is then required); at least a frontend or a backend so the project is demonstrable; 1–5 hardware items, a high-cost item must name a cheaper alternative; one controlled re-plan "Make it simpler / cheaper" (max 2); approval with confirm. No search (stack advice needs no web pages).
+
 ## Release 0.9 plan — Pretrained models and APIs (autonomous run, 2026-10-11)
 
 Scope: blueprint Step 16 (§26). Boundary: `DATASET_SELECTED → (search + choose) → MODEL_SELECTION (review: ≤2 "look for other models") → MODELS_APPROVED`.

@@ -35,7 +35,8 @@ class WorkflowState(str, Enum):
     DATASET_SELECTED = "DATASET_SELECTED"          # Release 0.8 ends here: the student selected a dataset
     MODEL_SELECTION = "MODEL_SELECTION"            # Release 0.9: the student reviews pretrained models and APIs
     MODELS_APPROVED = "MODELS_APPROVED"            # Release 0.9 ends here: the student approved the model plan
-    TECHNOLOGY_PLAN = "TECHNOLOGY_PLAN"
+    TECHNOLOGY_PLAN = "TECHNOLOGY_PLAN"            # Release 0.10: the student reviews the stack and hardware
+    TECHNOLOGY_APPROVED = "TECHNOLOGY_APPROVED"    # Release 0.10 ends here: the student approved them
     ARCHITECTURE = "ARCHITECTURE"
     EVALUATION = "EVALUATION"
     FEASIBILITY = "FEASIBILITY"
@@ -830,6 +831,115 @@ class ModelRun(BaseModel):
     error: str | None = None
 
 
+# ── Technology stack and hardware (Release 0.10) ──────────────────────────────
+
+# How many times the student can ask Grey to make the plan simpler / cheaper.
+MAX_TECHNOLOGY_REPLANS = 2
+
+
+class StackArea(str, Enum):
+    """The parts of a technology stack Grey may recommend (blueprint §27). Only the needed ones are used."""
+    FRONTEND = "frontend"
+    BACKEND = "backend"
+    DATABASE = "database"
+    AI_ML = "ai_ml"
+    TRAINING = "training"        # where models are trained (laptop, Colab, cloud GPU…)
+    DEPLOYMENT = "deployment"
+
+
+class HardwareKind(str, Enum):
+    """Hardware and infrastructure (blueprint §29)."""
+    NORMAL_LAPTOP = "normal_laptop"
+    DEDICATED_GPU = "dedicated_gpu"
+    GOOGLE_COLAB = "google_colab"
+    CLOUD_GPU = "cloud_gpu"
+    CAMERA = "camera"
+    SENSORS = "sensors"
+    ARDUINO = "arduino"
+    RASPBERRY_PI = "raspberry_pi"
+    JETSON = "jetson"
+    MOBILE_DEVICE = "mobile_device"
+    OTHER = "other"
+
+
+class CostLevel(str, Enum):
+    NONE = "none"        # free / already owned
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class TechnologyPreference(str, Enum):
+    """The controlled way a student can ask Grey to plan again (no free text)."""
+    SIMPLER = "simpler"      # "Make it simpler / cheaper"
+
+
+class StackChoice(BaseModel):
+    """One decision: the technology for one area, and why it suits THIS project (blueprint §28)."""
+    area: StackArea
+    choice: str = Field(min_length=1)       # e.g. "React"
+    reason: str = Field(min_length=1)
+
+
+class HardwareItem(BaseModel):
+    kind: HardwareKind
+    name: str = Field(min_length=1)          # e.g. "A normal laptop (8 GB RAM)"
+    purpose: str = Field(min_length=1)       # what it is needed for
+    essential: bool                          # False = nice to have
+    cost: CostLevel
+    alternative: str | None = None           # a cheaper or simpler option (required for high cost)
+
+
+class TechnologyPlan(BaseModel):
+    """A focused stack and the hardware the project needs. Rules live in technology_rules.py."""
+    summary: str = Field(min_length=1)
+    stack: list[StackChoice] = Field(min_length=2, max_length=6)
+    hardware: list[HardwareItem] = Field(min_length=1, max_length=5)
+
+
+class TechnologyPlanStatus(str, Enum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+
+
+class StoredTechnologyPlan(BaseModel):
+    """The technology plan as read back from the Project Brain."""
+    id: str
+    workspace_id: str
+    model_plan_id: str                       # the approved model plan it was made after
+    run_id: str
+    status: TechnologyPlanStatus
+    plan: TechnologyPlan
+    replans_used: int = 0
+    preference: TechnologyPreference | None = None
+    created_at: datetime
+    updated_at: datetime
+    approved_at: datetime | None = None
+
+
+class TechnologyRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class TechnologyRun(BaseModel):
+    """One attempt at the technology plan (the first one, or a re-plan)."""
+    id: str
+    workspace_id: str
+    model_plan_id: str
+    preference: TechnologyPreference | None = None
+    status: TechnologyRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -881,6 +991,10 @@ class WorkspaceBrainSnapshot(BaseModel):
     # Pretrained models and APIs (Release 0.9).
     model_plan: StoredModelPlan | None = None
     model_run: ModelRun | None = None
+
+    # Technology stack and hardware (Release 0.10).
+    technology_plan: StoredTechnologyPlan | None = None
+    technology_run: TechnologyRun | None = None
 
     created_at: datetime
     updated_at: datetime

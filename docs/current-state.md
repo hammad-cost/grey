@@ -1,12 +1,32 @@
 # Grey — Current State
 
-**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · 0.5 From problem to FYP (local, not yet run live) · **0.6 Project definition and scope (complete, local commits, not pushed; not yet run live)**
-**Last updated:** 2026-10-07
-**Scope:** FYP Companion, from "Start my FYP" to an approved project scope (stage `SCOPE_APPROVED`)
+**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · 0.5 From problem to FYP (local, not yet run live) · 0.6 Project definition and scope (local, not yet run live) · **0.7 AI necessity check and AI strategy (complete, local commits, not pushed; skill live-tested with Groq)**
+**Last updated:** 2026-10-10
+**Scope:** FYP Companion, from "Start my FYP" to an approved AI strategy (stage `AI_STRATEGY_APPROVED`)
 
 This file records exactly what is implemented today — no more, no less.
 For the planned product, see `docs/specs/`. For how the pieces fit together, see `docs/architecture.md`.
 For the quick recovery checkpoint (current step, next action), see `docs/resume.md`.
+
+---
+
+## 0d. Release 0.7 (AI necessity check and AI strategy) — what it added
+
+Product blueprint Steps 13–14 (§22 AI Necessity Check, §23 AI / ML Strategy). Grey never forces AI into a project.
+
+| Step | Built | Location |
+|---|---|---|
+| 1 | Project Brain: `ai_strategy_run` (each check or re-check: preference, status, provider/model/prompt version, error), `ai_strategy` (one per project: the strategy as JSON, status `draft` / `approved`, `rechecks_used`, latest `preference`). New stage `AI_STRATEGY_APPROVED` (review happens at `AI_STRATEGY`, which now comes right after `SCOPE_APPROVED`). Rules in plain code (`ai_strategy_rules.py`): a verdict that uses AI (`ai_necessary`, `ai_optional`, `traditional_ml`, `existing_model`) must name the AI part, task and primary approach; the others (`rule_based`, `optimization`, `not_required`) must name none; `traditional_ml` = train a model or hybrid (never generative AI); `existing_model` = pretrained model or API; the fallback differs from the primary. Re-check rules: "without AI" only when the project uses AI; "ready-made model" only when it doesn't already use one; at most **2** re-checks. | `Backend/app/core/brain/` |
+| 2 | Skill **`plan_ai_strategy`** (profile `structured_reasoning`, via the Skill Registry and `LLMGateway`): verdict (7 outcomes) + reason, how the project would work **without AI** (always answered), parts that need no AI (1–6), and — when AI is used — the AI part, task (12 types), primary approach (5) and optional fallback. Plain-code checks: unknown choices, empty texts, counts, the consistency rules, links, length, organization names, named technologies; one retry. For a re-check the model sees the student's request and its previous answer, and may keep its verdict if the preference doesn't fit (it must say why). Versioned prompt `plan_ai_strategy.v1`; fake-mode answers follow the problem's task type and the preference. | `Backend/app/domains/fyp/skills/plan_ai_strategy/`, `app/domains/fyp/prompts/plan_ai_strategy.py` |
+| 3 | Separate **`ai_strategy`** LangGraph workflow: `plan_ai_strategy` → `strategy_review` (interrupt: approve → END, recheck → back to `plan_ai_strategy`). Runner streams `ai_strategy_started → _progress ×3 → ai_strategy_ready` (or `ai_strategy_failed`); a failed re-check keeps the current strategy, keeps the review open and doesn't use up a re-check; restart-safe like 0.6. The view decides which re-checks are offered (`available_rechecks`). `scope_approved` now allows `checkAINeed`. | `Backend/app/domains/fyp/workflows/ai_strategy/` |
+| 4 | API: `POST /projects/{id}/ai-strategy` (stream), `POST /projects/{id}/ai-strategy/recheck` (stream, `{preference}`), `POST /projects/{id}/ai-strategy/approve`, `GET /projects/{id}/ai-strategy`. API version 0.7.0. | `Backend/app/api/ai_strategy.py` |
+| 5 | Frontend adapter: `approveScope()` continues straight into the AI check when the backend allows `checkAINeed`; `checkAINeed()` (retry), `recheckAIStrategy(preference)`, `approveAIStrategy(strategyId)`; `brainSummary` gains `aiStrategyStatus`, `aiStrategyId`, `aiNecessity`, `aiRechecksLeft`. | `Frontend/core/grey-agent/` |
+| 6 | UI: `AIStrategyCard` (live checklist; failure + Try again; review with the verdict and why, "Without AI", the AI / ML strategy box when AI is used, parts that need no AI, the allowed re-check buttons with "N of 2 re-checks left", **Approve AI strategy** with confirm), `ApprovedAIStrategyCard`. Data read safely by `domains/fyp/aiStrategy.ts`. | `Frontend/domains/fyp/`, `app/page.tsx` |
+| 7 | Docs + full verification; fake-mode end-to-end run through a real server (start → … → approve scope → AI check → "ready-made model" re-check → same re-check refused 409 → "without AI" re-check → third refused 409 → wrong id 409 → approve → late re-check 409); **one live Groq run of the skill** (`tests/live/test_ai_strategy_live.py`): first check → traditional ML, anomaly detection, train a model (hybrid fallback); "without AI" re-check → AI optional, with a rules-only alternative; no rejected replies. | `docs/`, `Backend/tests/live/` |
+
+**Behaviour changes vs 0.6:** `scope_approved` allows `checkAINeed` (was none), and the frontend starts the AI check automatically after the student approves the scope. The approved-scope card's footer now says Grey checks the AI need next.
+
+The strategy describes approaches in general terms only — it never names a dataset, model, library, API or service (those are later stages). There is no "use more AI" re-check.
 
 ---
 
@@ -101,10 +121,13 @@ The LLM runs in **fake mode by default** (no key, no cost); with `LLM_MODE=live`
 9. After approving, see **Your approved FYP** (stage `APPROVED_FYP`) — and, without clicking again, watch Grey define the project.
 10. Review **Your project definition**: the problem definition (what problem exists, who experiences it, why it matters, what exists today, the gap, what you'll build), the proposed solution (purpose, who uses it, input, output, main modules, how it works) and the **scope** in three lists: Core, Optional, Out of scope.
 11. Move any feature to another list (**Move to…**). Core must keep 2–8 features; the buttons that would break this are disabled.
-12. **Approve scope** (with a confirm step) → see **Your approved scope** (stage `SCOPE_APPROVED`).
+12. **Approve scope** (with a confirm step) → see **Your approved scope** (stage `SCOPE_APPROVED`) — and, without clicking again, watch Grey check whether the project really needs AI.
+13. Review **Does your project need AI?**: Grey's verdict (e.g. "Traditional machine learning is enough" or "A rule-based approach is better") and why, how the project would work without AI, the parts that need no AI and — when AI is used — where AI is used, the AI task, the main approach and a fallback.
+14. Optionally ask Grey to check again, up to 2 times: **Can I do this without AI?** or **Use a ready-made model instead** (only the ones that make sense are shown). Grey follows the preference when it fits, or keeps its answer and says why.
+15. **Approve AI strategy** (with a confirm step) → see **Your approved AI strategy** (stage `AI_STRATEGY_APPROVED`).
 
 On any failure: a calm message and **Try again** (or **Research again** when the evidence was too thin). A failed redesign keeps the current design and doesn't use up a redesign.
-The journey stops at the approved scope. AI necessity/strategy, datasets, technology, architecture, evaluation, feasibility and the proposal do not exist yet.
+The journey stops at the approved AI strategy. Datasets, technology, architecture, evaluation, feasibility and the proposal do not exist yet.
 
 ---
 
@@ -115,18 +138,19 @@ The journey stops at the approved scope. AI necessity/strategy, datasets, techno
 | Area | What exists | Location |
 |---|---|---|
 | Configuration | `APP_ENV`, `DATABASE_URL`, `CORS_ORIGINS`, `SEARCH_PROVIDERS`, `SERPAPI_API_KEY`, `TAVILY_API_KEY`, `RESEARCH_MAX_SEARCHES`, `SEARCH_TIMEOUT_SECONDS`, `SEARCH_MAX_RETRIES`, `SEARCH_COOLDOWN_SECONDS`, `SEARCH_QUOTA_COOLDOWN_SECONDS`, `MOCK_SEARCH_DELAY_MS`, `LLM_MODE`, `GROQ_API_KEY`, `GROQ_BASE_URL`, `LLM_PROFILE_*` overrides, `LLM_TIMEOUT_SECONDS`, `LLM_TOTAL_DEADLINE_SECONDS`, `LLM_MAX_RETRIES`, `LLM_COOLDOWN_SECONDS`, `LLM_QUOTA_COOLDOWN_SECONDS` | `app/core/config/settings.py`, `.env.example` |
-| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5); `project_definition_run`, `project_definition`, `scope_item` (0.6) | `app/core/brain/models.py` |
-| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval, project definition, scope moves, scope approval); scope rules in `scope_rules.py`; read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
+| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5); `project_definition_run`, `project_definition`, `scope_item` (0.6); `ai_strategy_run`, `ai_strategy` (0.7) | `app/core/brain/models.py` |
+| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval, project definition, scope moves, scope approval, AI checks, re-checks, AI strategy approval); scope rules in `scope_rules.py`, AI strategy rules in `ai_strategy_rules.py`; read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
 | Database | SQLAlchemy async engine; SQLite locally (`grey.db`); tables created at startup (new tables are added to an existing `grey.db` automatically) | `app/core/brain/database.py` |
 | Event envelope | `GreyEvent` (type, workspace_id, domain, workflow, stage, status, data, brain_patch, allowed_actions) | `app/core/events/schemas.py` |
 | Discovery workflow | `industry_selection` → `branch_selection` → ⏸ → `evidence_research` → ⏸ → `problem_extraction` → `problem_selection` (interrupt) → END | `app/domains/fyp/workflows/discovery/` |
 | FYP Design workflow (0.5) | `area_classification` → `fyp_design` → `fyp_review` (interrupt: approve → END, adjust → `fyp_design`) | `app/domains/fyp/workflows/fyp_design/` |
 | Project Definition workflow (0.6) | `define_project` → `scope_review` (interrupt: move → `scope_review`, approve → END) | `app/domains/fyp/workflows/project_definition/` |
-| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp`, `define_project` (LLM via gateway), registered at startup | `app/domains/fyp/skills/`, `main.py` |
+| AI Strategy workflow (0.7) | `plan_ai_strategy` → `strategy_review` (interrupt: approve → END, recheck → `plan_ai_strategy`) | `app/domains/fyp/workflows/ai_strategy/` |
+| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp`, `define_project`, `plan_ai_strategy` (LLM via gateway), registered at startup | `app/domains/fyp/skills/`, `main.py` |
 | Search tool | `SearchGateway` (ordered fallback) over `SerpApiProvider`, `TavilySearchProvider`; `MockSearchProvider` by default | `app/core/tools/` |
 | LLM layer | Gateway, profiles, router, health, errors, schema tools; Fake + OpenAI-compatible (Groq) providers | `app/core/llm/` |
 | Taxonomy | 15 industries, 80 branches, validation helpers | `app/domains/fyp/workflows/discovery/taxonomy.py` |
-| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`, `GET /health` | `app/api/`, `main.py` |
+| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`, `POST /projects/{id}/ai-strategy` (stream), `POST /projects/{id}/ai-strategy/recheck` (stream), `POST /projects/{id}/ai-strategy/approve`, `GET /projects/{id}/ai-strategy`, `GET /health` | `app/api/`, `main.py` |
 | CORS | Browser origins from `CORS_ORIGINS` (default `http://localhost:3000`) | `main.py` |
 
 ### Frontend (`Frontend/`)
@@ -134,21 +158,22 @@ The journey stops at the approved scope. AI necessity/strategy, datasets, techno
 | Area | What exists | Location |
 |---|---|---|
 | App shell | Next.js 15 App Router, Tailwind, sidebar placeholder, disabled chat input | `app/layout.tsx`, `app/page.tsx` |
-| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`, `defineProject`, `moveScopeItem`, `approveScope`), `readEventStream` | `core/grey-agent/` |
+| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`, `defineProject`, `moveScopeItem`, `approveScope`, `checkAINeed`, `recheckAIStrategy`, `approveAIStrategy`), `readEventStream` | `core/grey-agent/` |
 | UI state | `GreyUIState` from each `GreyEvent`: latest `eventData` + `lastEventType`, `progress`, `brainSummary` (camelCase from `brain_patch`) | `core/grey-agent/GreyAgentProvider.tsx` |
 | Discovery cards | `IndustrySelector`, `BranchSelector`, `ResearchProgressCard`, `ProblemProgressCard`, `ProblemOptions`, `ProblemOpportunityCard`, `SelectedProblemCard`, `StepChecklist` | `domains/fyp/components/` |
 | FYP cards (0.5) | `FunctionalAreaCard`, `FYPDirectionCard`, `ApprovedFYPCard` | `domains/fyp/components/` |
 | Definition cards (0.6) | `ProjectDefinitionCard`, `ApprovedScopeCard` | `domains/fyp/components/` |
-| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`); `projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`, `SCOPE_LISTS`) | `domains/fyp/` |
+| AI strategy cards (0.7) | `AIStrategyCard`, `ApprovedAIStrategyCard` | `domains/fyp/components/` |
+| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`); `projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`, `SCOPE_LISTS`); `aiStrategy.ts` (`readAIStrategy`, verdict / task / approach labels, `RECHECK_OPTIONS`) | `domains/fyp/` |
 
 ### Tests
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **744 passing, 10 skipped** (the live Groq + 9 live search tests) |
-| Backend live LLM | `$env:RUN_LIVE_LLM_TESTS="1"; ...pytest -m live_llm -s` | 1 test, needs `GROQ_API_KEY`; uses a little Groq quota |
+| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **844 passing, 11 skipped** (2 live Groq + 9 live search tests) |
+| Backend live LLM | `$env:RUN_LIVE_LLM_TESTS="1"; ...pytest -m live_llm -s` | 2 tests (gateway; `plan_ai_strategy` first check + re-check), need `GROQ_API_KEY`; use a little Groq quota |
 | Backend live search | `$env:RUN_LIVE_SEARCH_TESTS="1"; ...pytest -m live_search -s` | 9 tests, need `SERPAPI_API_KEY` / `TAVILY_API_KEY`; about 1 credit each |
-| Frontend (Vitest) | `cd Frontend; npm test` | **129 passing** |
+| Frontend (Vitest) | `cd Frontend; npm test` | **154 passing** |
 | Frontend type-check | `npm run type-check` | 0 errors |
 | Frontend build | `npm run build` | succeeds |
 
@@ -171,7 +196,8 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 
 ## 4. Not implemented (by design, for later releases)
 
-- AI necessity check and AI/ML strategy, datasets, models, technology stack, hardware, architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the approved scope
+- Datasets, specific models / APIs, technology stack, hardware, architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the approved AI strategy
+- Re-checks other than the two controlled ones (no free-text questions, no "use more AI"); keeping earlier AI strategy versions (a re-check replaces the draft; each attempt stays in `ai_strategy_run`)
 - Adding or rewording scope features, or asking Grey to rewrite the definition (0.6 allows moves between lists only)
 - Asking for more / different problems, or going back to change an earlier decision (e.g. a different problem after the FYP design started)
 - Evidence quality improvements of 0.4.1 Steps 2–4 (paused by the student's choice)
@@ -191,7 +217,7 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 
 1. **Workflow progress is lost when the backend restarts** (`MemorySaver`).
    - Industry/branch steps (0.1): a project started *before* a restart can hit **500** at the branch step.
-   - Research, problem extraction, problem selection, the whole FYP design (design, redesign, approval) and the project definition (definition, scope moves, approval) are **not affected**: they rebuild the workflow position from the Brain and replace runs left "running" by a stopped server.
+   - Research, problem extraction, problem selection, the whole FYP design (design, redesign, approval) the project definition (definition, scope moves, approval) and the AI strategy (check, re-checks, approval) are **not affected**: they rebuild the workflow position from the Brain and replace runs left "running" by a stopped server.
 
 2. **Project Brain `workflow_state` lags during branch selection** (stays `INDUSTRY_SELECTION` until the branch is saved).
 

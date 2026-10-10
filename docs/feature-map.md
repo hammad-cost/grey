@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-07 (Release 0.6)
+**Last updated:** 2026-10-10 (Release 0.7)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -25,6 +25,7 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F10 | Search gateway (SerpAPI → Tavily fallback) | ✅ (live-tested) | 0.4 / 0.4.1 |
 | F11 | From problem to FYP (area, design, redesigns, approval) | ✅ (fake LLM by default; not yet run live) | 0.5 |
 | F12 | Project definition and scope (definition, scope moves, approval) | ✅ (fake LLM by default; not yet run live) | 0.6 |
+| F13 | AI necessity check and AI strategy (check, re-checks, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.7 |
 
 ---
 
@@ -248,5 +249,23 @@ After the student approves the FYP, Grey writes a precise problem definition, a 
 | Workflow | Separate graph `project_definition`: `define_project` → `scope_review` (`interrupt`: move → `scope_review`, approve → END) — `nodes.py`, `graph.py`, `state.py` |
 | Skill | `define_project` (`structured_reasoning`, max 4,000 output tokens) — `Backend/app/domains/fyp/skills/define_project/`. Checks: list sizes (modules 2–6, steps 3–8, core 3–6, optional 1–4, out 2–5), empty, link, too long (titles 80, texts 500), duplicate feature title, organization name, named technology; one retry. Prompt `define_project.v1` (never decides whether AI is needed). Fake answer in `fake.py`. |
 | Project Brain | `project_definition_run` (status, provider/model/prompt version, error), `project_definition` (problem definition + proposed solution JSON, status draft/approved, scope_changes, approved_at), `scope_item` (kind, position, title, description). Stages `APPROVED_FYP` → `SCOPE` → `SCOPE_APPROVED`, each in the same commit as its data. Scope rules in `app/core/brain/scope_rules.py`. |
-| Events | `project_definition_started` → `project_definition_progress` ×3 (writing, checking, saving) → `project_definition_ready` (stage `SCOPE`, `awaiting_user`, allowed `approveScope` + `modifyScope`, `data.definition`). Failure: `project_definition_failed` (`blocked`, safe message, allowed `defineProject`). Move: `scope_updated` (`data.moved` = the feature's title). Approval: `scope_approved` (stage `SCOPE_APPROVED`, `complete`, no actions). |
+| Events | `project_definition_started` → `project_definition_progress` ×3 (writing, checking, saving) → `project_definition_ready` (stage `SCOPE`, `awaiting_user`, allowed `approveScope` + `modifyScope`, `data.definition`). Failure: `project_definition_failed` (`blocked`, safe message, allowed `defineProject`). Move: `scope_updated` (`data.moved` = the feature's title). Approval: `scope_approved` (stage `SCOPE_APPROVED`, `complete`, allowed `checkAINeed` since 0.7 → F13). |
 | Tests | Backend: `test_brain_project_definition.py` (23), `test_define_project_skill.py` (21), `test_project_definition_workflow.py` (17), `tests/integration/test_project_definition_api.py` (9). Frontend: adapter tests (6 new), `projectDefinition.test.ts`, `ProjectDefinitionCard.test.tsx`, `ApprovedScopeCard.test.tsx` |
+
+## F13 — AI necessity check and AI strategy (Release 0.7)
+
+After the student approves the scope, Grey checks whether the project really needs AI and, if it does, which AI task and implementation approach fit (blueprint §22–23). The student may ask Grey to check again (up to 2 times) with a controlled preference, then approves.
+
+| Layer | Detail |
+|---|---|
+| UI | `AIStrategyCard` (live checklist; failure → Try again; review: verdict + why, "Without AI", AI / ML strategy box when AI is used (where AI is used, task, main approach, fallback), parts that need no AI, re-check buttons **Can I do this without AI?** / **Use a ready-made model instead** — only those in `available_rechecks` — with "N of 2 re-checks left", a notice after a failed re-check, **Approve AI strategy** with confirm dialog), `ApprovedAIStrategyCard` — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.ai_strategy` (ai_strategy_ready, ai_strategy_failed after a re-check, ai_strategy_approved), `brainSummary` (`aiStrategyStatus`, `aiStrategyId`, `aiNecessity`, `aiRechecksLeft`); parsed by `Frontend/domains/fyp/aiStrategy.ts` (`readAIStrategy`, `labelOf`, label maps, `RECHECK_OPTIONS`) |
+| Adapter actions | `approveScope(id)` continues into `/ai-strategy` automatically when the backend allows `checkAINeed`; `checkAINeed()` (retry); `recheckAIStrategy(preference)`; `approveAIStrategy(strategyId)` — `Frontend/core/grey-agent/hooks.ts` |
+| API | `POST /projects/{id}/ai-strategy` → **200** NDJSON stream; **404** unknown; **409** scope not approved / already checked / already running. `POST /projects/{id}/ai-strategy/recheck {preference}` → **200** NDJSON stream; **409** nothing to review / no re-checks left / preference makes no sense / running; **422** not `without_ai` / `existing_model`. `POST /projects/{id}/ai-strategy/approve {strategy_id}` → **200** `ai_strategy_approved`; **409** wrong id / nothing to approve / re-check running. `GET /projects/{id}/ai-strategy` → `AIStrategyResponse` (view, latest run) — `Backend/app/api/ai_strategy.py` |
+| Runner | `start_ai_strategy()`, `start_ai_recheck()` + `AIStrategySession.events()`, `approve_strategy()` — `Backend/app/domains/fyp/workflows/ai_strategy/runner.py`. Saves with the workflow's strategy id, fails runs left "running", checks re-check rules before resuming, rebuilds the review pause from the Brain. |
+| Workflow | Separate graph `ai_strategy`: `plan_ai_strategy` → `strategy_review` (`interrupt`: approve → END, recheck → `plan_ai_strategy`) — `nodes.py`, `graph.py`, `state.py`; `view.py` computes `uses_ai`, `rechecks_left`, `available_rechecks` |
+| Skill | `plan_ai_strategy` (`structured_reasoning`, max 3,000 output tokens) — `Backend/app/domains/fyp/skills/plan_ai_strategy/`. The model returns plain strings ("none" when a choice doesn't apply); checks turn them into enums and reject: unknown choice, empty, wrong count (non-AI parts 1–6), the consistency rules, link, too long (texts 500, parts 120), organization name, named technology; one retry. Prompt `plan_ai_strategy.v1`. Fake answers in `fake.py`. |
+| Project Brain | `ai_strategy_run` (preference, status, provider/model/prompt version, error), `ai_strategy` (strategy JSON, status draft/approved, rechecks_used, preference, updated_at, approved_at). Stages `SCOPE_APPROVED` → `AI_STRATEGY` → `AI_STRATEGY_APPROVED`, each in the same commit as its data. Rules in `app/core/brain/ai_strategy_rules.py`. |
+| Events | `ai_strategy_started` → `ai_strategy_progress` ×3 (checking the AI need / checking again, checking the answer, saving) → `ai_strategy_ready` (stage `AI_STRATEGY`, `awaiting_user`, allowed `approveAIStrategy` + `recheckAIStrategy` while a re-check is possible, `data.ai_strategy`). Every event has `data.recheck`. Failure: first check → `ai_strategy_failed` (`blocked`, allowed `checkAINeed`); re-check → `ai_strategy_failed` (`awaiting_user`, strategy kept, review actions). Approval: `ai_strategy_approved` (stage `AI_STRATEGY_APPROVED`, `complete`, no actions). |
+| Tests | Backend: `test_brain_ai_strategy.py` (27), `test_plan_ai_strategy_skill.py` (41), `test_ai_strategy_workflow.py` (20), `tests/integration/test_ai_strategy_api.py` (12), live `tests/live/test_ai_strategy_live.py` (1, skipped by default). Frontend: adapter tests (5 new), `aiStrategy.test.ts`, `AIStrategyCard.test.tsx`, `ApprovedAIStrategyCard.test.tsx` |
+

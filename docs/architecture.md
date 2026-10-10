@@ -1,6 +1,6 @@
 # Grey — Architecture (as built)
 
-**Last updated:** 2026-10-07 (Release 0.6)
+**Last updated:** 2026-10-10 (Release 0.7)
 
 This describes the architecture that **actually exists in the code**.
 The target architecture is defined in `docs/specs/` (backend and frontend blueprints v2). Where the two differ, see §6.
@@ -57,6 +57,7 @@ Backend/
     ├── api/problems.py             problem stream + selection + listing routes (thin)
     ├── api/fyp_design.py           FYP design stream, redesign stream, approval, read (thin, 0.5)
     ├── api/project_definition.py   definition stream, scope move, scope approval, read (thin, 0.6)
+    ├── api/ai_strategy.py          AI check stream, re-check stream, approval, read (thin, 0.7)
     ├── core/                       shared, domain-independent
     │   ├── config/                 Settings from .env
     │   ├── brain/                  Project Brain: model, schemas, repository, database, readers,
@@ -77,9 +78,11 @@ Backend/
         ├── skills/design_fyp/      DesignFYPSkill: student-sized FYP, controlled redesigns, checks (0.5)
         ├── skills/fyp_design_shared.py  ProblemBrief, progress, text checks shared by the 0.5/0.6 skills
         ├── skills/define_project/  DefineProjectSkill: problem definition, scope, proposed solution, checks (0.6)
+        ├── skills/plan_ai_strategy/ PlanAIStrategySkill: AI necessity verdict, task, approach, checks (0.7)
         ├── workflows/discovery/    state, nodes, graph, taxonomy, research/problem runners + events
         ├── workflows/fyp_design/   state, nodes, graph, runner, events, view ("Why this FYP?") (0.5)
-        └── workflows/project_definition/  state, nodes, graph, runner, events, view (0.6)
+        ├── workflows/project_definition/  state, nodes, graph, runner, events, view (0.6)
+        └── workflows/ai_strategy/  state, nodes, graph, runner, events, view (0.7)
 ```
 
 **Responsibilities**
@@ -175,12 +178,29 @@ approveFYPDirection → fyp_direction_approved (allows defineProject) → adapte
   target user / input / output shown with the definition come from the approved design (view.py)
 ```
 
+### AI strategy path (Release 0.7)
+
+```
+approveScope → scope_approved (allows checkAINeed) → adapter POSTs /ai-strategy
+  runner: check stage SCOPE_APPROVED, claim project, fail leftover run
+  ai_strategy graph
+    plan_ai_strategy → PlanAIStrategySkill (structured_reasoning) → checks + ai_strategy_rules
+                       → runner saves the strategy (stage AI_STRATEGY) → ai_strategy_ready
+    strategy_review  ⏸ interrupt
+      recheck (≤2) → POST /ai-strategy/recheck {preference} → recheck rules → Command(resume=recheck)
+                     → plan_ai_strategy again (sees the preference + previous answer)
+                     → repository replaces the draft, rechecks_used + 1 → ai_strategy_ready
+      approve      → POST /ai-strategy/approve {strategy_id} → Command(resume=approve) → END
+                     → stage AI_STRATEGY_APPROVED → ai_strategy_approved
+  which re-checks are offered = view.py, using the same rules as the repository
+```
+
 ## 3. Two kinds of state
 
 | | Project Brain | LangGraph state |
 |---|---|---|
 | Purpose | Accepted decisions — **source of truth** | Where the workflow is paused |
-| Stored in | Database (`workspace_brain`, `research_run`, `evidence_source`, `problem_run`, `problem_candidate`, `problem_evidence`, `functional_area`, `fyp_design_run`, `fyp_design`, `project_definition_run`, `project_definition`, `scope_item`) | `MemorySaver` (process memory), one per graph (discovery, fyp_design, project_definition) |
+| Stored in | Database (`workspace_brain`, `research_run`, `evidence_source`, `problem_run`, `problem_candidate`, `problem_evidence`, `functional_area`, `fyp_design_run`, `fyp_design`, `project_definition_run`, `project_definition`, `scope_item`, `ai_strategy_run`, `ai_strategy`) | `MemorySaver` (process memory), one per graph (discovery, fyp_design, project_definition, ai_strategy) |
 | Survives restart | Yes | **No** (research, problem extraction, selection, every FYP design step and every project definition step rebuild their position from the Brain) |
 | Written by | API route via repository | LangGraph |
 
@@ -202,10 +222,12 @@ Frontend/
 ├── domains/fyp/components/ IndustrySelector, BranchSelector, ResearchProgressCard, ProblemProgressCard,
 │                           ProblemOptions, ProblemOpportunityCard, SelectedProblemCard, StepChecklist,
 │                           FunctionalAreaCard, FYPDirectionCard, ApprovedFYPCard (0.5),
-│                           ProjectDefinitionCard, ApprovedScopeCard (0.6)
+│                           ProjectDefinitionCard, ApprovedScopeCard (0.6),
+│                           AIStrategyCard, ApprovedAIStrategyCard (0.7)
 ├── domains/fyp/problems.ts reads problem options from event data safely
 ├── domains/fyp/fypDesign.ts reads the area / FYP design / Why this FYP from event data safely (0.5)
-└── domains/fyp/projectDefinition.ts reads the definition + scope, mirrors the core limits (0.6)
+├── domains/fyp/projectDefinition.ts reads the definition + scope, mirrors the core limits (0.6)
+└── domains/fyp/aiStrategy.ts reads the AI strategy, turns verdict / task / approach values into words (0.7)
 ```
 
 **Rules in force**
@@ -235,7 +257,7 @@ Every state-changing response is a `GreyEvent`:
 ```
 
 - Backend uses **snake_case**; the adapter converts `brain_patch` keys to camelCase (`industryStatus`, `branchStatus`, `workflowState`).
-- Transport: plain HTTP `POST`/`GET`, one request → one event — except `POST /projects/{id}/research`, `POST /projects/{id}/problems`, `POST /projects/{id}/fyp-design`, `POST /projects/{id}/fyp-design/adjust` and `POST /projects/{id}/project-definition`, which stream many events as newline-delimited JSON (`application/x-ndjson`). Errors before a stream starts are HTTP errors (404/409/422); failures during it arrive as a `research_failed` / `problem_extraction_failed` / `fyp_design_failed` / `project_definition_failed` event.
+- Transport: plain HTTP `POST`/`GET`, one request → one event — except `POST /projects/{id}/research`, `POST /projects/{id}/problems`, `POST /projects/{id}/fyp-design`, `POST /projects/{id}/fyp-design/adjust`, `POST /projects/{id}/project-definition`, `POST /projects/{id}/ai-strategy` and `POST /projects/{id}/ai-strategy/recheck`, which stream many events as newline-delimited JSON (`application/x-ndjson`). Errors before a stream starts are HTTP errors (404/409/422); failures during it arrive as a `research_failed` / `problem_extraction_failed` / `fyp_design_failed` / `project_definition_failed` / `ai_strategy_failed` event.
 - After `research_completed` (which allows `extractProblems`) the adapter immediately calls `/problems`; after `problem_selected` (which allows `designFYP`) it immediately calls `/fyp-design`; after `fyp_direction_approved` (which allows `defineProject`) it immediately calls `/project-definition` — so the student doesn't click twice.
 - CORS origins come from `CORS_ORIGINS` in `Backend/.env`.
 
@@ -250,7 +272,7 @@ Every state-changing response is a `GreyEvent`:
 | Streaming via CopilotKit | Research progress streams over a plain `fetch` + NDJSON reader in the adapter | Same events, no CopilotKit runtime needed yet. |
 | LLM calls behind a gateway | `LLMGateway` with profiles and provider adapters; only Groq is wired as a real provider; fake mode is the default | Other providers (Anthropic, OpenAI, LiteLLM) are one adapter each. |
 | Real web / academic search | SerpAPI + Tavily behind `SearchGateway`; mock by default | Live-tested 2026-10-06. Adding a vendor = one adapter in `core/tools/providers/` + one entry in the factory. |
-| One workflow per stage (Discovery, FYP Design, …) | `discovery`, `fyp_design` and `project_definition` are separate graphs, each with its own checkpointer | Later stages (AI strategy, technical planning, …) get their own graphs the same way. |
+| One workflow per stage (Discovery, FYP Design, …) | `discovery`, `fyp_design`, `project_definition` and `ai_strategy` are separate graphs, each with its own checkpointer | Later stages (datasets, technical planning, …) get their own graphs the same way. |
 | Startup databases (Dealroom, Crunchbase) | Public pages found via search only | Paid APIs are optional, later. |
 | Durable workflow execution | `MemorySaver` (in-memory) checkpointer | Simple for 0.1. A persistent checkpointer is needed before real use (see `current-state.md` §5). |
 | PostgreSQL / Supabase | SQLite via `DATABASE_URL` | Swappable by config; no migrations tool yet (`create_all` at startup). |

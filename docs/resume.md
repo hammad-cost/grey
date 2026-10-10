@@ -1,14 +1,39 @@
 # Resume Checkpoint
 
-**Updated:** 2026-10-07
+**Updated:** 2026-10-10
 
 | | |
 |---|---|
-| Current release | **0.6 — Project definition and scope: COMPLETE** (all 7 steps, local commits `1a18121` … Step 7 docs commit). **Not pushed, not tagged** — the student reviews first. Do NOT start 0.7. |
-| Current step | Waiting for the student's review of Release 0.6 (and 0.5, also unreviewed). |
-| Last completed step | 0.6 Step 7 — docs + full verification: 744 backend passing + 10 skipped (live), 129 frontend, type-check clean, build OK; fake-mode end-to-end run through a real server (… → approve FYP → definition → moves → 4th move refused 409 → approve scope → SCOPE_APPROVED → late move refused 409). |
-| Next action | Student reviews. Optional next: (a) one live run of 0.5 + 0.6 with Groq (ask first; ~3–7 Groq calls), (b) browser walk-through of 0.3–0.6, (c) "push to GitHub", (d) resume 0.4.1 Step 2 (evidence quality), (e) plan 0.7 (AI necessity check + AI/ML strategy, blueprint §22–23) — only when asked. |
-| Last commit | Release 0.6 Step 7 docs commit on `main` (run `git log --oneline -10`). Unpushed commits since `origin/main`: 0.3+0.4, 0.4 Step 7, 0.4.1 Step 1, 0.5 Steps 1–7, 0.6 Steps 1–7. **Ask before pushing.** |
+| Current release | **0.7 — AI necessity check and AI strategy: COMPLETE** (all 7 steps, local commits `a1a081d` … Step 7 docs commit). **Not pushed, not tagged** — the student reviews first. Do NOT start 0.8 (dataset discovery) unasked. |
+| Current step | Waiting for the student's review of Release 0.7 (and 0.5 + 0.6, also unreviewed in the browser). |
+| Last completed step | 0.7 Step 7 — docs + full verification: 844 backend passing + 11 skipped (live), 154 frontend, type-check clean, build OK; fake-mode end-to-end run through a real server (… → approve scope → AI check → "ready-made model" re-check → repeat refused 409 → "without AI" re-check → 3rd refused 409 → wrong id 409 → approve → late re-check 409); live Groq run of `plan_ai_strategy` (first check + "without AI" re-check) passed with no rejected replies. |
+| Next action | Student reviews. Optional next: (a) browser walk-through of 0.3–0.7, (b) a full live journey (real search + Groq, ~15 searches), (c) "push to GitHub", (d) resume 0.4.1 Step 2 (evidence quality), (e) plan 0.8 (dataset discovery, blueprint §24) — only when asked. |
+| Last commit | Release 0.7 Step 7 docs commit on `main` (run `git log --oneline -10`). Unpushed commits since `origin/main`: 0.3+0.4, 0.4 Step 7, 0.4.1 Step 1, 0.5 Steps 1–7, 0.6 Steps 1–7, 0.7 Steps 1–7. **Ask before pushing.** |
+
+## Release 0.7 plan — AI necessity check and AI strategy (2026-10-10; built in one continuous run at the student's request: "do 0.7 in one shot … and also test that in the end")
+
+Scope: blueprint Steps 13–14 (§22 AI Necessity Check, §23 AI / ML Strategy).
+Boundary: `SCOPE_APPROVED → (check) → AI_STRATEGY (review: ≤2 re-checks) → AI_STRATEGY_APPROVED`.
+Not in 0.7: datasets, specific models / APIs, stack, hardware, architecture, evaluation, feasibility, proposal.
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | Brain: `ai_strategy_run`, `ai_strategy`; stage `AI_STRATEGY_APPROVED` (and `AI_STRATEGY` moved before `DATASET_DISCOVERY`, matching blueprint step order 13–15); `ai_strategy_rules.py`; repository + snapshot fields | ✅ `a1a081d` |
+| 2 | Skill `plan_ai_strategy` (structured_reasoning) via registry + gateway; prompt `plan_ai_strategy.v1`; checks; fake answers | ✅ `2589ec8` |
+| 3 | `ai_strategy` LangGraph workflow (check → review interrupt: recheck ↺ / approve → END), runner (restart-safe), events, view; `scope_approved` allows `checkAINeed` | ✅ `591d908` |
+| 4 | API: `POST /ai-strategy` (stream), `POST /ai-strategy/recheck` (stream), `POST /ai-strategy/approve`, `GET /ai-strategy` | ✅ `ee9e230` |
+| 5 | Frontend adapter: `checkAINeed`, `recheckAIStrategy`, `approveAIStrategy`; auto-check after `approveScope` | ✅ `9ff4f47` |
+| 6 | `AIStrategyCard`, `ApprovedAIStrategyCard`; `aiStrategy.ts` | ✅ `8ea7f96` |
+| 7 | Docs + full verification + fake-mode e2e + live Groq skill test | ✅ (docs commit) |
+
+0.7 decisions (made by Claude while building in one go — the student may revisit):
+- Verdicts are exactly the blueprint's 7; tasks the blueprint's 12; approaches the blueprint's 5; one primary + optional fallback.
+- Grey always explains how the project would work **without AI**, even when AI is necessary.
+- Re-checks are controlled: **"Can I do this without AI?"** and **"Use a ready-made model instead"**, max **2**; offered only when they make sense (the backend decides, `available_rechecks`). No "use more AI" option (same spirit as 0.5). Grey may keep its verdict after a re-check if the preference doesn't fit, and says why.
+- One strategy row per project: a re-check replaces the draft (each attempt is kept in `ai_strategy_run`). A failed re-check doesn't use one up.
+- The strategy never names a dataset, model, library, API or service (same text checks as 0.5/0.6).
+- The check starts automatically after the student approves the scope (same pattern as 0.3, 0.5, 0.6). Approval needs a confirm click.
+- Live run note (2026-10-10, Groq `openai/gpt-oss-120b`): answers were sensible; the model listed some non-AI parts that aren't in the scope (e.g. "User authentication") — acceptable for now, could be tightened later.
 
 ## Release 0.6 plan — Project definition and scope (2026-10-07; built in one continuous run at the student's request: "do 0.6 in single shot")
 
@@ -124,10 +149,10 @@ For 0.3:
 ## How to verify the last good state
 ```powershell
 cd D:\Projects\Grey\Backend
-.\venv\Scripts\python.exe -m pytest -q      # expect 744 passed, 10 skipped
+.\venv\Scripts\python.exe -m pytest -q      # expect 844 passed, 11 skipped
 cd D:\Projects\Grey\Frontend
-npm test                                    # expect 129 passed
+npm test                                    # expect 154 passed
 cd D:\Projects\Grey
 git status                                  # expect a clean tree
-git log --oneline -3                        # newest should be "Release 0.6 Step 7: …"
+git log --oneline -3                        # newest should be "Release 0.7 Step 7: …"
 ```

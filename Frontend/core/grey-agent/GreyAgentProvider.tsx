@@ -61,6 +61,8 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
     feasibility_overall: "feasibilityOverall",
     supervisor_brief_status: "supervisorBriefStatus",
     supervisor_brief_id: "supervisorBriefId",
+    proposal_status: "proposalStatus",
+    proposal_id: "proposalId",
   } as const;
   const numberKeys = {
     evidence_count: "evidenceCount",
@@ -76,6 +78,7 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
     architecture_component_count: "architectureComponentCount",
     architecture_redesigns_left: "architectureRedesignsLeft",
     supervisor_attention_count: "supervisorAttentionCount",
+    proposal_rewrites_left: "proposalRewritesLeft",
   } as const;
 
   const summary: WorkspaceBrainSummary = {};

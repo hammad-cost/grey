@@ -86,6 +86,10 @@ export type WorkspaceBrainSummary = {
   supervisorBriefId?: string;
   /** How many readiness checks need attention (0 = ready). */
   supervisorAttentionCount?: number;
+  /** Proposal (Release 0.14): "running" | "draft" | "final" | "failed". */
+  proposalStatus?: string;
+  proposalId?: string;
+  proposalRewritesLeft?: number;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -178,6 +182,8 @@ export const Actions = {
   ACCEPT_FEASIBILITY: "acceptFeasibility",
   PREPARE_SUPERVISOR_BRIEF: "prepareSupervisorBrief",
   CONFIRM_SUPERVISOR_READY: "confirmSupervisorReady",
+  REWRITE_PROPOSAL_SECTION: "rewriteProposalSection",
+  FINALIZE_PROPOSAL: "finalizeProposal",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

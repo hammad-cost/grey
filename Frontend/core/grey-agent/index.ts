@@ -9,7 +9,7 @@
  */
 
 export { GreyAgentProvider } from "./GreyAgentProvider";
-export { useGreyAgent, useGreyActions, useGreyUIState } from "./hooks";
+export { proposalDownloadUrl, useGreyAgent, useGreyActions, useGreyUIState } from "./hooks";
 export type {
   ActionName,
   GreyEvent,

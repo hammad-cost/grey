@@ -58,6 +58,12 @@ const TECHNOLOGY_END_EVENTS = ["technology_plan_ready", "technology_plan_failed"
 const ARCHITECTURE_END_EVENTS = ["architecture_ready", "architecture_failed"];
 const FEASIBILITY_END_EVENTS = ["feasibility_ready", "feasibility_failed"];
 const SUPERVISOR_END_EVENTS = ["supervisor_readiness_ready", "supervisor_brief_failed"];
+const PROPOSAL_END_EVENTS = ["proposal_ready", "proposal_failed"];
+
+/** Where the browser downloads the proposal as a Markdown file (Release 0.14). */
+export function proposalDownloadUrl(workspaceId: string): string {
+  return `${BACKEND_URL}/projects/${workspaceId}/proposal/markdown`;
+}
 
 /**
  * POST to a streaming endpoint (with an optional JSON body) and apply every
@@ -687,14 +693,63 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  /** Confirm the student is ready for the supervisor. Release 0.13 ends here. */
+  /**
+   * Confirm the student is ready for the supervisor, then — when the backend says so
+   * (supervisor_ready_confirmed allows "generateProposal") — write the proposal
+   * straight away (Release 0.14).
+   */
   const confirmSupervisorReady = useCallback(
     (briefId: string) =>
       run(async () => {
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${workspaceId}/supervisor-brief/confirm`,
+          { method: "POST", body: JSON.stringify({ brief_id: briefId }) }
+        );
+        applyEvent(event);
+        if (!event.allowed_actions.includes(Actions.GENERATE_PROPOSAL)) return event;
+
+        return runEventStream(
+          `/projects/${workspaceId}/proposal`, PROPOSAL_END_EVENTS, applyEvent, "Writing your proposal"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Write the proposal (e.g. "Try again" after proposal_failed). */
+  const generateProposal = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/proposal`, PROPOSAL_END_EVENTS, applyEvent, "Writing your proposal"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Ask Grey to rewrite one narrative section (up to 3 times). Streams progress. */
+  const rewriteProposalSection = useCallback(
+    (section: string) =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/proposal/rewrite`, PROPOSAL_END_EVENTS, applyEvent, "Rewriting the section",
+          { section }
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Finalize the proposal. The FYP journey is complete (Release 0.14). */
+  const finalizeProposal = useCallback(
+    (proposalId: string) =>
+      run(async () => {
         if (!state.workspaceId) throw new Error("No active project.");
         const event = await apiFetch<GreyEvent>(
-          `/projects/${state.workspaceId}/supervisor-brief/confirm`,
-          { method: "POST", body: JSON.stringify({ brief_id: briefId }) }
+          `/projects/${state.workspaceId}/proposal/finalize`,
+          { method: "POST", body: JSON.stringify({ proposal_id: proposalId }) }
         );
         applyEvent(event);
         return event;
@@ -734,5 +789,8 @@ export function useGreyActions() {
     acceptFeasibility,
     prepareSupervisorBrief,
     confirmSupervisorReady,
+    generateProposal,
+    rewriteProposalSection,
+    finalizeProposal,
   };
 }

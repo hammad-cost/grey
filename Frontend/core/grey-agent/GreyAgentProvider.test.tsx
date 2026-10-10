@@ -493,6 +493,41 @@ const supervisorReady = briefEvent("supervisor_ready_confirmed", {
   brain_patch: { workflow_state: "SUPERVISOR_READY", supervisor_brief_status: "confirmed" },
 });
 
+const supervisorReadyWriteNext = briefEvent("supervisor_ready_confirmed", {
+  stage: "SUPERVISOR_READY",
+  status: "complete",
+  brain_patch: { workflow_state: "SUPERVISOR_READY", supervisor_brief_status: "confirmed" },
+  allowed_actions: ["generateProposal"],
+});
+
+function proposalEvent(type: string, extra: Partial<GreyEvent> = {}): GreyEvent {
+  return {
+    type,
+    workspace_id: "w_123",
+    domain: "fyp",
+    workflow: "proposal",
+    stage: "SUPERVISOR_READY",
+    status: "running",
+    data: { label: `${type} label`, completed_steps: 1, total_steps: 4 },
+    brain_patch: {},
+    allowed_actions: [],
+    ...extra,
+  };
+}
+
+const proposalStarted = proposalEvent("proposal_started", { brain_patch: { proposal_status: "running" } });
+const proposalReady = proposalEvent("proposal_ready", {
+  stage: "PROPOSAL_GENERATION",
+  status: "awaiting_user",
+  brain_patch: { workflow_state: "PROPOSAL_GENERATION", proposal_id: "p-1", proposal_status: "draft", proposal_rewrites_left: 3 },
+  allowed_actions: ["finalizeProposal", "rewriteProposalSection"],
+});
+const proposalFinalized = proposalEvent("proposal_finalized", {
+  stage: "COMPLETE",
+  status: "complete",
+  brain_patch: { workflow_state: "COMPLETE", proposal_status: "final" },
+});
+
 /** A streamed reply with these events, one JSON per line. */
 function streamOf(...events: GreyEvent[]) {
   return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
@@ -508,7 +543,7 @@ function Probe() {
     checkAINeed, recheckAIStrategy, approveAIStrategy, findDatasets, requestDatasetAlternative, selectDataset,
     findModels, requestOtherModels, approveModels, planTechnology, replanTechnology, approveTechnology,
     designArchitecture, redesignArchitecture, approveTechnicalPlan, assessFeasibility, acceptFeasibility,
-    prepareSupervisorBrief, confirmSupervisorReady,
+    prepareSupervisorBrief, confirmSupervisorReady, generateProposal, rewriteProposalSection, finalizeProposal,
   } = useGreyActions();
   return (
     <>
@@ -544,6 +579,9 @@ function Probe() {
       <button onClick={() => acceptFeasibility("f-1").catch(() => {})}>accept feasibility</button>
       <button onClick={() => prepareSupervisorBrief().catch(() => {})}>prepare brief</button>
       <button onClick={() => confirmSupervisorReady("b-1").catch(() => {})}>confirm ready</button>
+      <button onClick={() => generateProposal().catch(() => {})}>write proposal</button>
+      <button onClick={() => rewriteProposalSection("introduction").catch(() => {})}>rewrite intro</button>
+      <button onClick={() => finalizeProposal("p-1").catch(() => {})}>finalize proposal</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -1405,5 +1443,47 @@ describe("GreyAgentProvider", () => {
     await waitFor(() => expect(readState().currentStage).toBe("SUPERVISOR_READY"));
     expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/supervisor-brief\/confirm$/);
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ brief_id: "b-1" });
+  });
+
+  it("confirmSupervisorReady writes the proposal straight away when the backend allows it", async () => {
+    replyWith(projectCreated);
+    replyWith(supervisorReadyWriteNext);
+    fetchMock.mockResolvedValueOnce(streamOf(proposalStarted, proposalReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("confirm ready"));
+    await waitFor(() => expect(readState().currentStage).toBe("PROPOSAL_GENERATION"));
+
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/proposal$/);
+    expect(readState().brainSummary).toMatchObject({
+      supervisorBriefStatus: "confirmed", proposalId: "p-1", proposalStatus: "draft", proposalRewritesLeft: 3,
+    });
+  });
+
+  it("generateProposal retries, rewriteProposalSection posts the section, finalizeProposal completes the journey", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(proposalStarted, proposalReady));
+    fetchMock.mockResolvedValueOnce(streamOf(proposalStarted, proposalReady));
+    replyWith(proposalFinalized);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("write proposal"));
+    await waitFor(() => expect(readState().currentStage).toBe("PROPOSAL_GENERATION"));
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/proposal$/);
+
+    fireEvent.click(screen.getByText("rewrite intro"));
+    await waitFor(() => expect(fetchMock.mock.calls).toHaveLength(3));
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/proposal\/rewrite$/);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ section: "introduction" });
+
+    await waitFor(() => expect(readState().lastEventType).toBe("proposal_ready"));
+    fireEvent.click(screen.getByText("finalize proposal"));
+    await waitFor(() => expect(readState().currentStage).toBe("COMPLETE"));
+    expect(fetchMock.mock.calls[3][0]).toMatch(/\/projects\/w_123\/proposal\/finalize$/);
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toEqual({ proposal_id: "p-1" });
   });
 });

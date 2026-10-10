@@ -1,6 +1,8 @@
 from .repository import (
     AIStrategyError,
     AIStrategyRunAlreadyRunningError,
+    ArchitectureError,
+    ArchitectureRunAlreadyRunningError,
     DatasetError,
     DatasetRunAlreadyRunningError,
     FYPDesignError,
@@ -29,6 +31,8 @@ from .database import create_all_tables, get_session
 __all__ = [
     "AIStrategyError",
     "AIStrategyRunAlreadyRunningError",
+    "ArchitectureError",
+    "ArchitectureRunAlreadyRunningError",
     "DatasetError",
     "DatasetRunAlreadyRunningError",
     "EvidenceSource",

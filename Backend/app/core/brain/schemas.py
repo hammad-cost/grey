@@ -38,7 +38,8 @@ class WorkflowState(str, Enum):
     TECHNOLOGY_PLAN = "TECHNOLOGY_PLAN"            # Release 0.10: the student reviews the stack and hardware
     TECHNOLOGY_APPROVED = "TECHNOLOGY_APPROVED"    # Release 0.10 ends here: the student approved them
     ARCHITECTURE = "ARCHITECTURE"
-    EVALUATION = "EVALUATION"
+    EVALUATION = "EVALUATION"                      # not used: evaluation is reviewed with the architecture
+    TECHNICAL_PLAN_APPROVED = "TECHNICAL_PLAN_APPROVED"   # Release 0.11 ends here: architecture + evaluation approved
     FEASIBILITY = "FEASIBILITY"
     SUPERVISOR_READINESS = "SUPERVISOR_READINESS"
     PROPOSAL_GENERATION = "PROPOSAL_GENERATION"
@@ -940,6 +941,135 @@ class TechnologyRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── System architecture and evaluation plan (Release 0.11) ────────────────────
+
+MAX_ARCHITECTURE_REDESIGNS = 2
+
+
+class ComponentKind(str, Enum):
+    """What a box in the architecture diagram is (blueprint §30)."""
+    DATA_SOURCE = "data_source"
+    PROCESSING = "processing"
+    MODEL = "model"                  # the AI / ML part (only when the project uses AI)
+    RULES = "rules"                  # rule-based or optimization logic
+    BACKEND = "backend"
+    STORAGE = "storage"
+    INTERFACE = "interface"          # dashboard, app or other screen
+    USER = "user"
+    EXTERNAL_SERVICE = "external_service"
+
+
+class ArchitectureComponent(BaseModel):
+    id: str = Field(min_length=1, max_length=20)     # short key used by the flows, e.g. "c1"
+    name: str = Field(min_length=1)
+    kind: ComponentKind
+    role: str = Field(min_length=1)                  # what it does
+    technology: str | None = None                    # e.g. "FastAPI" (from the approved stack), if any
+
+
+class ArchitectureFlow(BaseModel):
+    source: str = Field(min_length=1)                # a component id
+    target: str = Field(min_length=1)                # a component id
+    data: str = Field(min_length=1)                  # what flows, e.g. "cleaned vessel tracks"
+
+
+class Architecture(BaseModel):
+    components: list[ArchitectureComponent] = Field(min_length=4, max_length=10)
+    flows: list[ArchitectureFlow] = Field(min_length=3, max_length=14)
+
+
+class Metric(str, Enum):
+    """AI evaluation metrics (blueprint §31)."""
+    ACCURACY = "accuracy"
+    PRECISION = "precision"
+    RECALL = "recall"
+    F1_SCORE = "f1_score"
+    AUC = "auc"
+    MAE = "mae"
+    RMSE = "rmse"
+    FALSE_ALARM_RATE = "false_alarm_rate"
+    DETECTION_RATE = "detection_rate"
+
+
+class SystemTestKind(str, Enum):
+    """How the system as a whole is shown to work (blueprint §31)."""
+    FUNCTIONAL_TESTING = "functional_testing"
+    USABILITY_TESTING = "usability_testing"
+    RESPONSE_TIME = "response_time"
+    BASELINE_COMPARISON = "baseline_comparison"
+    USER_EVALUATION = "user_evaluation"
+
+
+class EvaluationMetric(BaseModel):
+    metric: Metric
+    why: str = Field(min_length=1)
+    goal: str = Field(min_length=1)          # what the student aims for, e.g. "Recall of at least 0.8"
+
+
+class SystemTest(BaseModel):
+    kind: SystemTestKind
+    how: str = Field(min_length=1)
+
+
+class EvaluationPlan(BaseModel):
+    metrics: list[EvaluationMetric] = Field(default_factory=list, max_length=5)
+    tests: list[SystemTest] = Field(min_length=1, max_length=5)
+    baseline: str | None = None              # what the student compares against, if anything
+
+
+class TechnicalPlan(BaseModel):
+    """The architecture and the evaluation plan, reviewed and approved together. Rules in architecture_rules.py."""
+    summary: str = Field(min_length=1)
+    architecture: Architecture
+    evaluation: EvaluationPlan
+
+
+class ArchitecturePreference(str, Enum):
+    SIMPLER = "simpler"      # "Make it simpler"
+
+
+class TechnicalPlanStatus(str, Enum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+
+
+class StoredTechnicalPlan(BaseModel):
+    """The technical plan as read back from the Project Brain."""
+    id: str
+    workspace_id: str
+    technology_plan_id: str
+    run_id: str
+    status: TechnicalPlanStatus
+    plan: TechnicalPlan
+    redesigns_used: int = 0
+    created_at: datetime
+    updated_at: datetime
+    approved_at: datetime | None = None
+
+
+class ArchitectureRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class ArchitectureRun(BaseModel):
+    """One attempt at the technical plan (the first one, or a redesign)."""
+    id: str
+    workspace_id: str
+    technology_plan_id: str
+    preference: ArchitecturePreference | None = None
+    status: ArchitectureRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -995,6 +1125,10 @@ class WorkspaceBrainSnapshot(BaseModel):
     # Technology stack and hardware (Release 0.10).
     technology_plan: StoredTechnologyPlan | None = None
     technology_run: TechnologyRun | None = None
+
+    # Architecture and evaluation plan (Release 0.11).
+    technical_plan: StoredTechnicalPlan | None = None
+    architecture_run: ArchitectureRun | None = None
 
     created_at: datetime
     updated_at: datetime

@@ -6,7 +6,7 @@ Project Brain tables (workspace_brain, research_run, evidence_source,
 problem_run, problem_candidate, problem_evidence, functional_area,
 fyp_design_run, fyp_design, project_definition_run, project_definition,
 scope_item, ai_strategy_run, ai_strategy, dataset_run, dataset_plan, model_run, model_plan,
-technology_run, technology_plan).
+technology_run, technology_plan, architecture_run, technical_plan).
 Everything else (API routes, workflows, skills) calls this repository —
 they never touch the database directly.
 
@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.brain.models import (
     AIStrategyRecord,
     AIStrategyRunRecord,
+    ArchitectureRunRecord,
     DatasetPlanRecord,
     DatasetRunRecord,
     EvidenceSourceRecord,
@@ -38,16 +39,18 @@ from app.core.brain.models import (
     ProjectDefinitionRunRecord,
     ResearchRunRecord,
     ScopeItemRecord,
+    TechnicalPlanRecord,
     TechnologyPlanRecord,
     TechnologyRunRecord,
     WorkspaceBrainRecord,
 )
 from app.core.brain.ai_strategy_rules import check_strategy, recheck_problem
 from app.core.brain.dataset_rules import check_plan, research_problem
-from app.core.brain import model_rules, technology_rules
+from app.core.brain import architecture_rules, model_rules, technology_rules
 from app.core.brain.ai_strategy_rules import uses_ai
 from app.core.brain.schemas import (
     MAX_AI_STRATEGY_RECHECKS,
+    MAX_ARCHITECTURE_REDESIGNS,
     MAX_DATASET_RESEARCHES,
     MAX_FYP_ADJUSTMENTS,
     MAX_MODEL_RESEARCHES,
@@ -102,6 +105,12 @@ from app.core.brain.schemas import (
     StoredDatasetPlan,
     StoredModelPlan,
     StoredTechnologyPlan,
+    StoredTechnicalPlan,
+    ArchitecturePreference,
+    ArchitectureRun,
+    ArchitectureRunStatus,
+    TechnicalPlan,
+    TechnicalPlanStatus,
     TechnologyPlan,
     TechnologyPlanStatus,
     TechnologyPreference,
@@ -138,6 +147,9 @@ STALE_MODEL_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for technology plans (Release 0.10).
 STALE_TECHNOLOGY_RUN_AFTER = timedelta(minutes=10)
+
+# The same rule for technical plans (Release 0.11).
+STALE_ARCHITECTURE_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for project definition runs (Release 0.6).
 STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
@@ -205,6 +217,14 @@ class TechnologyRunAlreadyRunningError(Exception):
 
 class TechnologyError(ValueError):
     """The technology step isn't allowed now (wrong stage, no re-plans left, …)."""
+
+
+class ArchitectureRunAlreadyRunningError(Exception):
+    """A technical plan is already being made for this project."""
+
+
+class ArchitectureError(ValueError):
+    """The architecture step isn't allowed now (wrong stage, no redesigns left, …)."""
 
 
 class FYPDesignError(ValueError):
@@ -366,6 +386,8 @@ class WorkspaceBrainRepository:
         snapshot.model_run = await self.get_latest_model_run(record.workspace_id)
         snapshot.technology_plan = await self.get_technology_plan(record.workspace_id)
         snapshot.technology_run = await self.get_latest_technology_run(record.workspace_id)
+        snapshot.technical_plan = await self.get_technical_plan(record.workspace_id)
+        snapshot.architecture_run = await self.get_latest_architecture_run(record.workspace_id)
         return snapshot
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -2331,3 +2353,217 @@ class WorkspaceBrainRepository:
         await self._session.commit()
         await self._session.refresh(record)
         return self._to_stored_technology_plan(record)
+
+    # ── System architecture and evaluation plan (Release 0.11) ────────────────
+
+    async def _technical_plan_record(self, workspace_id: str) -> TechnicalPlanRecord | None:
+        result = await self._session.execute(
+            select(TechnicalPlanRecord).where(TechnicalPlanRecord.workspace_id == workspace_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _latest_architecture_run_record(self, workspace_id: str) -> ArchitectureRunRecord | None:
+        result = await self._session.execute(
+            select(ArchitectureRunRecord)
+            .where(ArchitectureRunRecord.workspace_id == workspace_id)
+            .order_by(ArchitectureRunRecord.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_architecture_run_record(self, run_id: str) -> ArchitectureRunRecord:
+        run = await self._session.get(ArchitectureRunRecord, run_id)
+        if run is None:
+            raise ValueError(f"Architecture run '{run_id}' not found.")
+        return run
+
+    @staticmethod
+    def _to_stored_technical_plan(record: TechnicalPlanRecord) -> StoredTechnicalPlan:
+        return StoredTechnicalPlan(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            technology_plan_id=record.technology_plan_id,
+            run_id=record.run_id,
+            status=TechnicalPlanStatus(record.status),
+            plan=record.plan,
+            redesigns_used=record.redesigns_used,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            approved_at=record.approved_at,
+        )
+
+    async def get_technical_plan(self, workspace_id: str) -> StoredTechnicalPlan | None:
+        """The technical plan (draft or approved), or None until Grey has designed it."""
+        record = await self._technical_plan_record(workspace_id)
+        return self._to_stored_technical_plan(record) if record else None
+
+    async def get_latest_architecture_run(self, workspace_id: str) -> ArchitectureRun | None:
+        """The most recent technical plan attempt, or None."""
+        run = await self._latest_architecture_run_record(workspace_id)
+        return ArchitectureRun.model_validate(run) if run else None
+
+    async def start_architecture_run(
+        self, workspace_id: str, preference: ArchitecturePreference | None = None
+    ) -> ArchitectureRun:
+        """
+        Record that Grey has started the technical plan.
+
+        Without a preference: allowed only at TECHNOLOGY_APPROVED with no plan yet.
+        With a preference (a redesign): only at ARCHITECTURE while the plan is a
+        draft and redesigns are left.
+
+        Raises:
+            ValueError, ArchitectureError, ArchitectureRunAlreadyRunningError (unless the running one is stale).
+        """
+        workspace = await self._require_record(workspace_id)
+        technology = await self._technology_plan_record(workspace_id)
+        plan = await self._technical_plan_record(workspace_id)
+
+        if preference is None:
+            if (
+                workspace.workflow_state != WorkflowState.TECHNOLOGY_APPROVED.value
+                or technology is None
+                or technology.status != TechnologyPlanStatus.APPROVED.value
+            ):
+                raise ArchitectureError(
+                    f"Grey designs the architecture only after the technology plan is approved (stage: {workspace.workflow_state})."
+                )
+            if plan is not None:
+                raise ArchitectureError("Grey has already designed the architecture.")
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.ARCHITECTURE.value
+                or plan is None
+                or plan.status != TechnicalPlanStatus.DRAFT.value
+            ):
+                raise ArchitectureError(f"There is no technical plan to change (stage: {workspace.workflow_state}).")
+            if plan.redesigns_used >= MAX_ARCHITECTURE_REDESIGNS:
+                raise ArchitectureError(
+                    f"All {MAX_ARCHITECTURE_REDESIGNS} redesigns have been used. You can approve the technical plan."
+                )
+
+        latest = await self._latest_architecture_run_record(workspace_id)
+        if latest is not None and latest.status == ArchitectureRunStatus.RUNNING.value:
+            age = datetime.now(timezone.utc) - _as_utc(latest.started_at)
+            if age < STALE_ARCHITECTURE_RUN_AFTER:
+                raise ArchitectureRunAlreadyRunningError(
+                    f"Grey is already designing the architecture for workspace '{workspace_id}'."
+                )
+            latest.status = ArchitectureRunStatus.FAILED.value
+            latest.error = "Technical plan did not finish (marked as stale)."
+            latest.completed_at = datetime.now(timezone.utc)
+
+        run = ArchitectureRunRecord(
+            workspace_id=workspace_id,
+            technology_plan_id=technology.id,
+            preference=preference.value if preference else None,
+            status=ArchitectureRunStatus.RUNNING.value,
+            started_at=datetime.now(timezone.utc),
+        )
+        self._session.add(run)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ArchitectureRun.model_validate(run)
+
+    async def complete_architecture_run(
+        self,
+        run_id: str,
+        plan: TechnicalPlan,
+        *,
+        plan_id: str | None = None,
+        provider: str,
+        model: str,
+        prompt_version: str,
+    ) -> StoredTechnicalPlan:
+        """
+        Save a technical plan and mark the run complete, in one commit.
+        First plan → stage ARCHITECTURE. Redesign → the draft is replaced, one redesign used.
+
+        Raises:
+            ValueError:             the run isn't running, or the stage is wrong.
+            ArchitectureRuleError:  the plan breaks a rule in architecture_rules.py.
+        """
+        run = await self._require_architecture_run_record(run_id)
+        if run.status != ArchitectureRunStatus.RUNNING.value:
+            raise ValueError(f"Architecture run '{run_id}' is not running (status: {run.status}).")
+        strategy_record = await self._ai_strategy_record(run.workspace_id)
+        strategy = AIStrategy.model_validate(strategy_record.strategy)
+        architecture_rules.check_plan(plan, uses_ai=uses_ai(strategy.necessity), task=strategy.task_type)
+        workspace = await self._require_record(run.workspace_id)
+        record = await self._technical_plan_record(run.workspace_id)
+        now = datetime.now(timezone.utc)
+
+        if run.preference is None:
+            if workspace.workflow_state != WorkflowState.TECHNOLOGY_APPROVED.value or record is not None:
+                raise ValueError(f"The technical plan can't be saved now (stage: {workspace.workflow_state}).")
+            record = TechnicalPlanRecord(
+                id=plan_id or str(uuid.uuid4()),
+                workspace_id=run.workspace_id,
+                technology_plan_id=run.technology_plan_id,
+                run_id=run.id,
+                status=TechnicalPlanStatus.DRAFT.value,
+                plan=plan.model_dump(mode="json"),
+                redesigns_used=0,
+                created_at=now,
+                updated_at=now,
+            )
+            self._session.add(record)
+            workspace.workflow_state = WorkflowState.ARCHITECTURE.value
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.ARCHITECTURE.value
+                or record is None
+                or record.status != TechnicalPlanStatus.DRAFT.value
+            ):
+                raise ValueError(f"The technical plan can't be replaced now (stage: {workspace.workflow_state}).")
+            record.plan = plan.model_dump(mode="json")
+            record.run_id = run.id
+            record.redesigns_used += 1
+            record.updated_at = now
+
+        run.status = ArchitectureRunStatus.COMPLETE.value
+        run.completed_at = now
+        run.provider = provider
+        run.model = model
+        run.prompt_version = prompt_version
+        workspace.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_technical_plan(record)
+
+    async def fail_architecture_run(self, run_id: str, error: str) -> ArchitectureRun:
+        """Mark a technical plan attempt as failed (a failed redesign doesn't use one up)."""
+        run = await self._require_architecture_run_record(run_id)
+        run.status = ArchitectureRunStatus.FAILED.value
+        run.error = error
+        run.completed_at = datetime.now(timezone.utc)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ArchitectureRun.model_validate(run)
+
+    async def approve_technical_plan(self, workspace_id: str, plan_id: str) -> StoredTechnicalPlan:
+        """
+        Record the student's approval of the architecture and evaluation plan.
+        The project moves to TECHNICAL_PLAN_APPROVED in the same commit.
+
+        Raises:
+            ValueError, ArchitectureError (no draft plan, or `plan_id` isn't this project's).
+        """
+        workspace = await self._require_record(workspace_id)
+        record = await self._technical_plan_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.ARCHITECTURE.value
+            or record is None
+            or record.status != TechnicalPlanStatus.DRAFT.value
+        ):
+            raise ArchitectureError(f"There is no technical plan to approve (stage: {workspace.workflow_state}).")
+        if record.id != plan_id:
+            raise ArchitectureError(f"'{plan_id}' is not this project's technical plan.")
+        now = datetime.now(timezone.utc)
+        record.status = TechnicalPlanStatus.APPROVED.value
+        record.approved_at = now
+        workspace.workflow_state = WorkflowState.TECHNICAL_PLAN_APPROVED.value
+        workspace.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_technical_plan(record)

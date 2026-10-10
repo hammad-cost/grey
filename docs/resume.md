@@ -23,6 +23,22 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 | 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | planned |
 | 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | planned |
 
+## Release 0.11 plan — System architecture and evaluation plan (autonomous run, 2026-10-11)
+
+Scope: blueprint Steps 19–20 (§30 System Architecture, §31 Evaluation Plan). Boundary: `TECHNOLOGY_APPROVED → (design) → ARCHITECTURE (review: ≤2 "make it simpler") → TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan` from the frontend blueprint). The `EVALUATION` stage enum stays unused: the evaluation plan is reviewed together with the architecture (one "technical plan").
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | Brain: `architecture_run`, `technical_plan` (summary; architecture = 4–10 components + flows; evaluation = metrics, system tests, baseline); stage `TECHNICAL_PLAN_APPROVED`; `architecture_rules.py`; repository + snapshot | |
+| 2 | Skill `design_architecture` (LLM): components (data source, processing, model, rules, backend, storage, interface, user, external service) derived from the approved design, modules, dataset, models and stack; flows between them; AI metrics (accuracy, precision, recall, F1, AUC, MAE, RMSE, false alarm rate, detection rate) chosen for the task, each with why and a goal; system tests (functional, usability, response time, baseline comparison, user evaluation); checks; prompt; fake answers | |
+| 3 | `technical_plan` workflow (design → review interrupt: redesign ↺ / approve → END), runner, events, view; `technology_approved` allows `designArchitecture` | |
+| 4 | API: `POST /architecture` (stream), `POST /architecture/redesign` (stream), `POST /architecture/approve`, `GET /architecture` | |
+| 5 | Frontend adapter: `designArchitecture`, `redesignArchitecture`, `approveTechnicalPlan`; auto-start after `approveTechnology` | |
+| 6 | `ArchitectureCard` (pipeline diagram + evaluation), `ApprovedTechnicalPlanCard`; `architecture.ts` | |
+| 7 | Docs + full verification + fake e2e + live Groq run | |
+
+Decisions: plain-code rules check the diagram (unique ids, every flow between known components, every component connected, a user and an interface, a model component and AI metrics only when the project uses AI, metrics that match the AI task — error metrics for regression / forecasting, detection metrics for classification-type tasks, a baseline named when a baseline comparison is planned); one controlled redesign "Make it simpler" (max 2); approval with confirm.
+
 ## Release 0.10 plan — Technology stack and hardware (autonomous run, 2026-10-11)
 
 Scope: blueprint Steps 17–18 (§27 Technology Stack Guidance, §28 Recommendation Principle, §29 Hardware and Infrastructure).

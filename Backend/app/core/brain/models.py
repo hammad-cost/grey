@@ -21,6 +21,8 @@ model_run    — one row per model search or re-search, with the pages it found 
 model_plan   — existing models and APIs and what to do with them, one per project.
 technology_run  — one row per technology plan or re-plan (Release 0.10).
 technology_plan — the stack and hardware plan, one per project.
+architecture_run — one row per technical plan or redesign (Release 0.11).
+technical_plan   — the architecture and evaluation plan, one per project.
 
 Together they are the authoritative state of a student's FYP journey.
 Chat history and LangGraph runtime state are NOT stored here —
@@ -579,6 +581,49 @@ class TechnologyPlanRecord(Base):
     plan: Mapped[dict] = mapped_column(JSON)                        # TechnologyPlan, always read as a whole
     replans_used: Mapped[int] = mapped_column(Integer, default=0)
     preference: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ArchitectureRunRecord(Base):
+    """One attempt at the technical plan: the first one, or a redesign (Release 0.11)."""
+
+    __tablename__ = "architecture_run"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    technology_plan_id: Mapped[str] = mapped_column(String, ForeignKey("technology_plan.id"))
+    preference: Mapped[str | None] = mapped_column(String, nullable=True)   # ArchitecturePreference value
+
+    status: Mapped[str] = mapped_column(String)                     # ArchitectureRunStatus value
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TechnicalPlanRecord(Base):
+    """The architecture and evaluation plan (Release 0.11). One per project; a redesign replaces it."""
+
+    __tablename__ = "technical_plan"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), unique=True, index=True
+    )
+    technology_plan_id: Mapped[str] = mapped_column(String, ForeignKey("technology_plan.id"))
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("architecture_run.id"))
+    status: Mapped[str] = mapped_column(String)                     # TechnicalPlanStatus value
+
+    plan: Mapped[dict] = mapped_column(JSON)                        # TechnicalPlan, always read as a whole
+    redesigns_used: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

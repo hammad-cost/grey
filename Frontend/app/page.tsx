@@ -25,10 +25,13 @@
  *   TECHNOLOGY_PLAN    → TechnologyPlanCard (review: make it simpler, approve)
  *   TECHNOLOGY_APPROVED → ApprovedTechnologyCard + ArchitectureCard (Grey designing the architecture)
  *   ARCHITECTURE       → ArchitectureCard (review: make it simpler, approve the technical plan)
- *   TECHNICAL_PLAN_APPROVED → ApprovedTechnicalPlanCard (Release 0.11 ends here)
+ *   TECHNICAL_PLAN_APPROVED → ApprovedTechnicalPlanCard + FeasibilityCard (Grey checking feasibility)
+ *   FEASIBILITY        → FeasibilityCard (review: accept)
+ *   FEASIBILITY_ACCEPTED → AcceptedFeasibilityCard (Release 0.12 ends here)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
+import { AcceptedFeasibilityCard } from "@/domains/fyp/components/AcceptedFeasibilityCard";
 import { AIStrategyCard } from "@/domains/fyp/components/AIStrategyCard";
 import { ApprovedAIStrategyCard } from "@/domains/fyp/components/ApprovedAIStrategyCard";
 import { ArchitectureCard } from "@/domains/fyp/components/ArchitectureCard";
@@ -38,6 +41,7 @@ import { ApprovedTechnicalPlanCard } from "@/domains/fyp/components/ApprovedTech
 import { ApprovedTechnologyCard } from "@/domains/fyp/components/ApprovedTechnologyCard";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
 import { DatasetRecommendationCard } from "@/domains/fyp/components/DatasetRecommendationCard";
+import { FeasibilityCard } from "@/domains/fyp/components/FeasibilityCard";
 import { FunctionalAreaCard } from "@/domains/fyp/components/FunctionalAreaCard";
 import { FYPDirectionCard } from "@/domains/fyp/components/FYPDirectionCard";
 import { ApprovedModelsCard } from "@/domains/fyp/components/ApprovedModelsCard";
@@ -56,7 +60,7 @@ const STAGES_WITH_OWN_PROGRESS = [
   "EVIDENCE_RESEARCH", "PROBLEM_OPTIONS", "PROBLEM_SELECTED", "AREA_CLASSIFICATION", "FYP_DESIGN",
   "APPROVED_FYP", "SCOPE", "SCOPE_APPROVED", "AI_STRATEGY", "AI_STRATEGY_APPROVED", "DATASET_DISCOVERY",
   "DATASET_SELECTED", "MODEL_SELECTION", "MODELS_APPROVED", "TECHNOLOGY_PLAN",
-  "TECHNOLOGY_APPROVED", "ARCHITECTURE",
+  "TECHNOLOGY_APPROVED", "ARCHITECTURE", "TECHNICAL_PLAN_APPROVED", "FEASIBILITY",
 ];
 
 export default function Home() {
@@ -167,6 +171,12 @@ export default function Home() {
         <div className="flex flex-col gap-4 mt-4">
           <ArchitectureCard />
           <ApprovedTechnicalPlanCard />
+        </div>
+
+        {/* ── Feasibility (Release 0.12) ──────────────────────────────────── */}
+        <div className="flex flex-col gap-4 mt-4">
+          <FeasibilityCard />
+          <AcceptedFeasibilityCard />
         </div>
 
       </div>

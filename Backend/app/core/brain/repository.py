@@ -5,7 +5,7 @@ The only place in the codebase that reads from and writes to the
 Project Brain tables (workspace_brain, research_run, evidence_source,
 problem_run, problem_candidate, problem_evidence, functional_area,
 fyp_design_run, fyp_design, project_definition_run, project_definition,
-scope_item, ai_strategy_run, ai_strategy, dataset_run, dataset_plan).
+scope_item, ai_strategy_run, ai_strategy, dataset_run, dataset_plan, model_run, model_plan).
 Everything else (API routes, workflows, skills) calls this repository —
 they never touch the database directly.
 
@@ -26,6 +26,8 @@ from app.core.brain.models import (
     DatasetRunRecord,
     EvidenceSourceRecord,
     FunctionalAreaRecord,
+    ModelPlanRecord,
+    ModelRunRecord,
     FYPDesignRecord,
     FYPDesignRunRecord,
     ProblemCandidateRecord,
@@ -39,10 +41,12 @@ from app.core.brain.models import (
 )
 from app.core.brain.ai_strategy_rules import check_strategy, recheck_problem
 from app.core.brain.dataset_rules import check_plan, research_problem
+from app.core.brain import model_rules
 from app.core.brain.schemas import (
     MAX_AI_STRATEGY_RECHECKS,
     MAX_DATASET_RESEARCHES,
     MAX_FYP_ADJUSTMENTS,
+    MAX_MODEL_RESEARCHES,
     AIStrategy,
     AIStrategyPreference,
     AIStrategyRun,
@@ -56,6 +60,12 @@ from app.core.brain.schemas import (
     DatasetRun,
     DatasetRunStatus,
     MAX_PROBLEM_OPTIONS,
+    ModelCandidate,
+    ModelPlan,
+    ModelPlanStatus,
+    ModelPreference,
+    ModelRun,
+    ModelRunStatus,
     DecisionStatus,
     EvidenceSource,
     EvidenceStrength,
@@ -85,6 +95,7 @@ from app.core.brain.schemas import (
     StoredProblemCandidate,
     StoredAIStrategy,
     StoredDatasetPlan,
+    StoredModelPlan,
     StoredProjectDefinition,
     StoredScopeItem,
     WorkflowState,
@@ -110,6 +121,9 @@ STALE_AI_STRATEGY_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for dataset searches (Release 0.8).
 STALE_DATASET_RUN_AFTER = timedelta(minutes=10)
+
+# The same rule for model searches (Release 0.9).
+STALE_MODEL_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for project definition runs (Release 0.6).
 STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
@@ -161,6 +175,14 @@ class DatasetRunAlreadyRunningError(Exception):
 
 class DatasetError(ValueError):
     """The dataset step isn't allowed now (wrong stage, no re-searches left, …)."""
+
+
+class ModelRunAlreadyRunningError(Exception):
+    """A model search is already running for this project."""
+
+
+class ModelError(ValueError):
+    """The model step isn't allowed now (wrong stage, no re-searches left, …)."""
 
 
 class FYPDesignError(ValueError):
@@ -318,6 +340,8 @@ class WorkspaceBrainRepository:
         snapshot.ai_strategy_run = await self.get_latest_ai_strategy_run(record.workspace_id)
         snapshot.dataset_plan = await self.get_dataset_plan(record.workspace_id)
         snapshot.dataset_run = await self.get_latest_dataset_run(record.workspace_id)
+        snapshot.model_plan = await self.get_model_plan(record.workspace_id)
+        snapshot.model_run = await self.get_latest_model_run(record.workspace_id)
         return snapshot
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -1813,3 +1837,255 @@ class WorkspaceBrainRepository:
         await self._session.commit()
         await self._session.refresh(record)
         return self._to_stored_dataset_plan(record)
+
+    # ── Pretrained models and APIs (Release 0.9) ──────────────────────────────
+
+    async def _model_plan_record(self, workspace_id: str) -> ModelPlanRecord | None:
+        result = await self._session.execute(
+            select(ModelPlanRecord).where(ModelPlanRecord.workspace_id == workspace_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _latest_model_run_record(self, workspace_id: str) -> ModelRunRecord | None:
+        result = await self._session.execute(
+            select(ModelRunRecord)
+            .where(ModelRunRecord.workspace_id == workspace_id)
+            .order_by(ModelRunRecord.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_model_run_record(self, run_id: str) -> ModelRunRecord:
+        run = await self._session.get(ModelRunRecord, run_id)
+        if run is None:
+            raise ValueError(f"Model run '{run_id}' not found.")
+        return run
+
+    @staticmethod
+    def _to_model_run(run: ModelRunRecord) -> ModelRun:
+        return ModelRun(
+            id=run.id,
+            workspace_id=run.workspace_id,
+            dataset_plan_id=run.dataset_plan_id,
+            preference=run.preference,
+            status=ModelRunStatus(run.status),
+            started_at=run.started_at,
+            completed_at=run.completed_at,
+            searches_used=run.searches_used or 0,
+            candidates_found=len(run.candidates or []),
+            provider=run.provider,
+            model=run.model,
+            prompt_version=run.prompt_version,
+            error=run.error,
+        )
+
+    @staticmethod
+    def _to_stored_model_plan(record: ModelPlanRecord) -> StoredModelPlan:
+        return StoredModelPlan(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            dataset_plan_id=record.dataset_plan_id,
+            run_id=record.run_id,
+            status=ModelPlanStatus(record.status),
+            plan=record.plan,
+            researches_used=record.researches_used,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            approved_at=record.approved_at,
+        )
+
+    async def get_model_plan(self, workspace_id: str) -> StoredModelPlan | None:
+        """The model plan (draft or approved), or None until Grey has looked."""
+        record = await self._model_plan_record(workspace_id)
+        return self._to_stored_model_plan(record) if record else None
+
+    async def get_latest_model_run(self, workspace_id: str) -> ModelRun | None:
+        """The most recent model search (first search or re-search), or None."""
+        run = await self._latest_model_run_record(workspace_id)
+        return self._to_model_run(run) if run else None
+
+    async def list_model_candidates(self, run_id: str) -> list[ModelCandidate]:
+        """The pages a model search run found (empty until it completes)."""
+        run = await self._require_model_run_record(run_id)
+        return [ModelCandidate.model_validate(c) for c in run.candidates or []]
+
+    async def start_model_run(self, workspace_id: str, preference: ModelPreference | None = None) -> ModelRun:
+        """
+        Record that Grey has started looking for models and APIs.
+
+        Without a preference (the first search): allowed only at DATASET_SELECTED
+        with no model plan yet (a failed attempt can be retried).
+        With a preference (a re-search): allowed only at MODEL_SELECTION while the
+        plan is a draft, re-searches are left, and the project uses AI.
+
+        Raises:
+            ValueError:                   the project does not exist.
+            ModelError:                   not allowed now (see above).
+            ModelRunAlreadyRunningError:  a search is already in progress (unless it is stale).
+        """
+        workspace = await self._require_record(workspace_id)
+        dataset = await self._dataset_plan_record(workspace_id)
+        plan = await self._model_plan_record(workspace_id)
+
+        if preference is None:
+            if (
+                workspace.workflow_state != WorkflowState.DATASET_SELECTED.value
+                or dataset is None
+                or dataset.status != DatasetPlanStatus.SELECTED.value
+            ):
+                raise ModelError(
+                    f"Grey looks for models only after a dataset is selected (stage: {workspace.workflow_state})."
+                )
+            if plan is not None:
+                raise ModelError("Grey has already looked for models.")
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.MODEL_SELECTION.value
+                or plan is None
+                or plan.status != ModelPlanStatus.DRAFT.value
+            ):
+                raise ModelError(f"There are no models to search again for (stage: {workspace.workflow_state}).")
+            if plan.researches_used >= MAX_MODEL_RESEARCHES:
+                raise ModelError(
+                    f"All {MAX_MODEL_RESEARCHES} new searches have been used. You can approve the model plan."
+                )
+            problem = model_rules.research_problem(ModelPlan.model_validate(plan.plan), preference)
+            if problem is not None:
+                raise ModelError(problem)
+
+        latest = await self._latest_model_run_record(workspace_id)
+        if latest is not None and latest.status == ModelRunStatus.RUNNING.value:
+            age = datetime.now(timezone.utc) - _as_utc(latest.started_at)
+            if age < STALE_MODEL_RUN_AFTER:
+                raise ModelRunAlreadyRunningError(
+                    f"Grey is already looking for models for workspace '{workspace_id}'."
+                )
+            latest.status = ModelRunStatus.FAILED.value
+            latest.error = "Model search did not finish (marked as stale)."
+            latest.completed_at = datetime.now(timezone.utc)
+
+        run = ModelRunRecord(
+            workspace_id=workspace_id,
+            dataset_plan_id=dataset.id,
+            preference=preference.value if preference else None,
+            status=ModelRunStatus.RUNNING.value,
+            candidates=[],
+            started_at=datetime.now(timezone.utc),
+        )
+        self._session.add(run)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return self._to_model_run(run)
+
+    async def complete_model_run(
+        self,
+        run_id: str,
+        plan: ModelPlan,
+        candidates: list[ModelCandidate],
+        *,
+        searches_used: int,
+        plan_id: str | None = None,
+        provider: str,
+        model: str,
+        prompt_version: str,
+    ) -> StoredModelPlan:
+        """
+        Save the result of a model search and mark the run complete, in one commit.
+
+        First search: the plan is created and the project moves to MODEL_SELECTION.
+        Re-search: the draft is replaced and one re-search is used up.
+
+        Raises:
+            ValueError:      the run does not exist or is not running, or the stage is wrong.
+            ModelRuleError:  the plan breaks a rule in model_rules.py.
+        """
+        run = await self._require_model_run_record(run_id)
+        if run.status != ModelRunStatus.RUNNING.value:
+            raise ValueError(f"Model run '{run_id}' is not running (status: {run.status}).")
+        workspace = await self._require_record(run.workspace_id)
+        record = await self._model_plan_record(run.workspace_id)
+        preference = ModelPreference(run.preference) if run.preference else None
+        previous = ModelPlan.model_validate(record.plan) if record is not None else None
+        model_rules.check_plan(plan, {c.url for c in candidates}, preference=preference, previous=previous)
+        now = datetime.now(timezone.utc)
+
+        if preference is None:
+            if workspace.workflow_state != WorkflowState.DATASET_SELECTED.value or record is not None:
+                raise ValueError(f"The model plan can't be saved now (stage: {workspace.workflow_state}).")
+            record = ModelPlanRecord(
+                id=plan_id or str(uuid.uuid4()),
+                workspace_id=run.workspace_id,
+                dataset_plan_id=run.dataset_plan_id,
+                run_id=run.id,
+                status=ModelPlanStatus.DRAFT.value,
+                plan=plan.model_dump(mode="json"),
+                researches_used=0,
+                created_at=now,
+                updated_at=now,
+            )
+            self._session.add(record)
+            workspace.workflow_state = WorkflowState.MODEL_SELECTION.value
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.MODEL_SELECTION.value
+                or record is None
+                or record.status != ModelPlanStatus.DRAFT.value
+            ):
+                raise ValueError(f"The model plan can't be replaced now (stage: {workspace.workflow_state}).")
+            record.plan = plan.model_dump(mode="json")
+            record.run_id = run.id
+            record.researches_used += 1
+            record.updated_at = now
+
+        run.status = ModelRunStatus.COMPLETE.value
+        run.completed_at = now
+        run.searches_used = searches_used
+        run.candidates = [c.model_dump(mode="json") for c in candidates]
+        run.provider = provider
+        run.model = model
+        run.prompt_version = prompt_version
+        workspace.updated_at = now
+
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_model_plan(record)
+
+    async def fail_model_run(self, run_id: str, error: str, *, searches_used: int = 0) -> ModelRun:
+        """Mark a model search as failed (a failed re-search doesn't use one up)."""
+        run = await self._require_model_run_record(run_id)
+        run.status = ModelRunStatus.FAILED.value
+        run.error = error
+        run.searches_used = searches_used
+        run.completed_at = datetime.now(timezone.utc)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return self._to_model_run(run)
+
+    async def approve_model_plan(self, workspace_id: str, plan_id: str) -> StoredModelPlan:
+        """
+        Record the student's approval of the model plan (a mandatory decision).
+        The project moves to MODELS_APPROVED in the same commit.
+
+        Raises:
+            ValueError:  the project does not exist.
+            ModelError:  there is no draft plan, or `plan_id` isn't this project's.
+        """
+        workspace = await self._require_record(workspace_id)
+        record = await self._model_plan_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.MODEL_SELECTION.value
+            or record is None
+            or record.status != ModelPlanStatus.DRAFT.value
+        ):
+            raise ModelError(f"There is no model plan to approve (stage: {workspace.workflow_state}).")
+        if record.id != plan_id:
+            raise ModelError(f"'{plan_id}' is not this project's model plan.")
+
+        now = datetime.now(timezone.utc)
+        record.status = ModelPlanStatus.APPROVED.value
+        record.approved_at = now
+        workspace.workflow_state = WorkflowState.MODELS_APPROVED.value
+        workspace.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_model_plan(record)

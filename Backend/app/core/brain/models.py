@@ -17,6 +17,8 @@ ai_strategy_run — one row per AI necessity check or re-check (Release 0.7).
 ai_strategy     — the AI necessity verdict and AI / ML strategy, one per project.
 dataset_run  — one row per dataset search or re-search, with the pages it found (Release 0.8).
 dataset_plan — the recommended primary and alternative datasets, one per project.
+model_run    — one row per model search or re-search, with the pages it found (Release 0.9).
+model_plan   — existing models and APIs and what to do with them, one per project.
 
 Together they are the authoritative state of a student's FYP journey.
 Chat history and LangGraph runtime state are NOT stored here —
@@ -484,3 +486,54 @@ class DatasetPlanRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ModelRunRecord(Base):
+    """One model search: the first one, or a re-search the student asked for (Release 0.9)."""
+
+    __tablename__ = "model_run"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    dataset_plan_id: Mapped[str] = mapped_column(String, ForeignKey("dataset_plan.id"))
+    preference: Mapped[str | None] = mapped_column(String, nullable=True)   # ModelPreference value
+
+    status: Mapped[str] = mapped_column(String)                     # ModelRunStatus value
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Filled in when the run completes: what the search found, and which LLM chose
+    searches_used: Mapped[int] = mapped_column(Integer, default=0)
+    candidates: Mapped[list] = mapped_column(JSON, default=list)    # ModelCandidate list
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Filled in when the run fails
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ModelPlanRecord(Base):
+    """
+    Existing models and APIs for the project (Release 0.9). One per project;
+    a re-search replaces the plan (each attempt stays in model_run).
+    """
+
+    __tablename__ = "model_plan"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), unique=True, index=True
+    )
+    dataset_plan_id: Mapped[str] = mapped_column(String, ForeignKey("dataset_plan.id"))
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("model_run.id"))   # the run that wrote it
+    status: Mapped[str] = mapped_column(String)                     # ModelPlanStatus value
+
+    plan: Mapped[dict] = mapped_column(JSON)                        # ModelPlan, always read as a whole
+    researches_used: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

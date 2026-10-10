@@ -33,6 +33,8 @@ class WorkflowState(str, Enum):
     AI_STRATEGY_APPROVED = "AI_STRATEGY_APPROVED"  # Release 0.7 ends here: the student approved the AI strategy
     DATASET_DISCOVERY = "DATASET_DISCOVERY"        # Release 0.8: the student reviews the recommended datasets
     DATASET_SELECTED = "DATASET_SELECTED"          # Release 0.8 ends here: the student selected a dataset
+    MODEL_SELECTION = "MODEL_SELECTION"            # Release 0.9: the student reviews pretrained models and APIs
+    MODELS_APPROVED = "MODELS_APPROVED"            # Release 0.9 ends here: the student approved the model plan
     TECHNOLOGY_PLAN = "TECHNOLOGY_PLAN"
     ARCHITECTURE = "ARCHITECTURE"
     EVALUATION = "EVALUATION"
@@ -734,6 +736,100 @@ class DatasetRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Pretrained models and APIs (Release 0.9) ──────────────────────────────────
+
+# How many times the student can ask Grey to look for other models.
+MAX_MODEL_RESEARCHES = 2
+MAX_MODEL_OPTIONS = 3
+
+# A web page the model search found. Same shape as a dataset page.
+ModelCandidate = DatasetCandidate
+
+
+class ModelKind(str, Enum):
+    """What kind of ready-made thing it is (blueprint §26)."""
+    PRETRAINED_MODEL = "pretrained_model"      # e.g. a model page on a model hub
+    API_SERVICE = "api_service"                # a hosted AI service or public API
+    CODE_REPOSITORY = "code_repository"        # a research implementation or open-source code
+
+
+class ModelUse(str, Enum):
+    """What the student should do with it (blueprint §26)."""
+    USE_DIRECTLY = "use_directly"
+    FINE_TUNE = "fine_tune"
+    BENCHMARK = "benchmark"      # compare the student's own model against it
+    AVOID = "avoid"              # found, but not a good idea (Grey says why)
+
+
+class ModelPreference(str, Enum):
+    """The controlled way a student can ask Grey to search again (no free text)."""
+    OTHER_OPTIONS = "other_options"    # "Look for other models"
+
+
+class ModelOption(BaseModel):
+    """One ready-made model, API or code base Grey found, and what to do with it."""
+    kind: ModelKind
+    name: str = Field(min_length=1)
+    source: str = Field(min_length=1)               # the site or organization behind the page
+    url: str = Field(pattern=r"^https?://\S+$")     # always a page the search found
+    use: ModelUse
+    reason: str = Field(min_length=1)               # why this use, for THIS project
+    role: str = Field(min_length=1)                 # which part of the system it would serve
+    limitations: list[str] = Field(min_length=1, max_length=4)
+
+
+class ModelPlan(BaseModel):
+    """
+    Grey's view of existing models and APIs for the project. Empty `options`
+    is a valid answer (nothing relevant exists, or the project doesn't use AI).
+    """
+    needs_model: bool                               # False when the approved AI strategy uses no AI
+    summary: str = Field(min_length=1)              # the overall advice, in 1-2 sentences
+    options: list[ModelOption] = Field(default_factory=list, max_length=MAX_MODEL_OPTIONS)
+
+
+class ModelPlanStatus(str, Enum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+
+
+class StoredModelPlan(BaseModel):
+    """The model plan as read back from the Project Brain."""
+    id: str
+    workspace_id: str
+    dataset_plan_id: str                      # the selected dataset it was made after
+    run_id: str
+    status: ModelPlanStatus
+    plan: ModelPlan
+    researches_used: int = 0
+    created_at: datetime
+    updated_at: datetime
+    approved_at: datetime | None = None
+
+
+class ModelRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class ModelRun(BaseModel):
+    """One model search (the first one, or a re-search). The pages it found are read separately."""
+    id: str
+    workspace_id: str
+    dataset_plan_id: str
+    preference: ModelPreference | None = None
+    status: ModelRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    searches_used: int = 0
+    candidates_found: int = 0
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -781,6 +877,10 @@ class WorkspaceBrainSnapshot(BaseModel):
     # and the latest search.
     dataset_plan: StoredDatasetPlan | None = None
     dataset_run: DatasetRun | None = None
+
+    # Pretrained models and APIs (Release 0.9).
+    model_plan: StoredModelPlan | None = None
+    model_run: ModelRun | None = None
 
     created_at: datetime
     updated_at: datetime

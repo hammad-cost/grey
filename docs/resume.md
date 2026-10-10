@@ -4,11 +4,42 @@
 
 | | |
 |---|---|
-| Current release | **0.8 — Dataset discovery: COMPLETE** (all 8 steps, local commits `d8e6d8a` … Step 8 docs commit). **Pushed to GitHub 2026-10-11** (`origin/main` = `990a399`); not tagged. Do NOT start 0.9 (pretrained models and APIs, blueprint §26) unasked. |
-| Current step | Waiting for the student's review of Release 0.8 (and 0.5–0.7, also unreviewed in the browser). |
-| Last completed step | 0.8 Step 8 — docs + full verification: 980 backend passing + 12 skipped (live), 182 frontend, type-check clean, build OK; fake-mode end-to-end run through a real server (… → approve AI strategy → dataset search → 2nd first-search 409 → "own data" re-search (0 searches) → repeat 409 → "other options" re-search (nothing shown before) → 3rd 409 → unknown preference 422 → wrong plan id 409 → select alternative → late re-search / 2nd selection 409); live run of `find_datasets` (real search + Groq; first search + "own data" re-search) passed with no rejected replies — findings in current-state.md known issue 12. |
-| Next action | Student reviews. Optional next: (a) browser walk-through of 0.3–0.8, (b) a full live journey (d) improve dataset search wording (known issue 12) or resume 0.4.1 Step 2, (e) plan 0.9 (pretrained models and APIs) — only when asked. |
-| Last commit | Release 0.8 Step 8 docs commit on `main` (run `git log --oneline -10`). Everything up to 0.8 Step 8 is pushed (`origin/main` = `990a399`). **Ask before pushing future work.** |
+| Current release | **0.9 — Pretrained models and APIs: building** (autonomous run 0.9 → 0.14 authorized by the student on 2026-10-11: "get this AI product done till 0.14 in one shot … update memory and resume after every release"). 0.8 is complete and pushed (`990a399`). |
+| Current step | 0.9 Step 1 (Brain storage). |
+| Last completed step | 0.8 Step 8 (docs + full verification: 980 backend + 12 skipped, 182 frontend). |
+| Next action | Continue the roadmap below, release by release. After each release: full tests, fake e2e, docs + memory, then the next release. Commit locally; **do not push** (the student says "push"). |
+| Last commit | `git log --oneline -10`. `origin/main` = 0.8 docs push; everything after it is local. |
+
+## Roadmap for the autonomous run (0.9 → 0.14)
+
+Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter → cards → docs), one commit per step, tests every step; deterministic code wherever AI isn't needed; every major decision is a confirm-step approval; Grey never goes back to earlier stages (no `goBack` yet). Blueprint-faithful decisions are made without asking and listed per release.
+
+| Release | Blueprint | Review stage → end stage | Skill(s) | Status |
+|---|---|---|---|---|
+| 0.9 | §26 Pretrained models and APIs | `MODEL_SELECTION` → `MODELS_APPROVED` | `find_models` (search + LLM); no-AI projects: deterministic "no model needed", no search, no LLM | building |
+| 0.10 | §27–29 Technology stack + hardware | `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED` | `plan_technology` (LLM) | planned |
+| 0.11 | §30–31 Architecture + evaluation plan | `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan`) | `design_architecture` (LLM) | planned |
+| 0.12 | §32 Feasibility | `FEASIBILITY` → `FEASIBILITY_ACCEPTED` | `assess_feasibility` (LLM rates dimensions; overall High/Medium/Low computed in code) | planned |
+| 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | planned |
+| 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | planned |
+
+## Release 0.9 plan — Pretrained models and APIs (autonomous run, 2026-10-11)
+
+Scope: blueprint Step 16 (§26). Boundary: `DATASET_SELECTED → (search + choose) → MODEL_SELECTION (review: ≤2 "look for other models") → MODELS_APPROVED`.
+Not in 0.9: stack, hardware, architecture, evaluation, feasibility, proposal; reading model pages; Hugging Face / cloud APIs.
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | Brain: `model_run` (with the pages found), `model_plan` (needs_model, summary, 0–3 options); stages `MODEL_SELECTION`, `MODELS_APPROVED`; `model_rules.py`; repository + snapshot | |
+| 2 | Model search (plain code): reuse the 0.8 search runner with a model-page filter (Hugging Face model pages, Kaggle models, PyTorch Hub, GitHub repos, Papers with Code, cloud AI service pages); 4 searches, 3 for "other models" | |
+| 3 | Skill `find_models`: model picks 0–3 found pages by number, each with kind (pretrained model / API service / code repository), use (use directly / fine-tune / benchmark / avoid), why, which part of the system, limitations; no-AI projects get a code-built "no model needed" plan (no search, no LLM) | |
+| 4 | `model_selection` workflow (find → review interrupt: research ↺ / approve → END), runner, events, view; `dataset_selected` allows `findModels` | |
+| 5 | API: `POST /models` (stream), `POST /models/research` (stream), `POST /models/approve`, `GET /models` | |
+| 6 | Frontend adapter: `findModels`, `requestOtherModels`, `approveModels`; auto-start after `selectDataset` | |
+| 7 | `ModelRecommendationCard`, `ApprovedModelsCard`; `models.ts` | |
+| 8 | Docs + full verification + fake e2e + live run | |
+
+Decisions: found pages only (picked by number, never typed links); an empty list is allowed when nothing fits (Grey says so and the AI strategy's own approach stands); no-AI projects skip search and the model; one controlled re-search "Look for other models" (max 2, never repeats a page); approval with confirm.
 
 ## Release 0.8 plan — Dataset discovery (approved 2026-10-10; built in one continuous run; the student accepted every recommendation: "do what look best for you")
 

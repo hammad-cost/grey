@@ -15,10 +15,14 @@
  *   FYP_DESIGN         → FunctionalAreaCard + FYPDirectionCard (review: approve / adjust)
  *   APPROVED_FYP       → ApprovedFYPCard + ProjectDefinitionCard (Grey defining the project)
  *   SCOPE              → ProjectDefinitionCard (review: move features, approve the scope)
- *   SCOPE_APPROVED     → ApprovedScopeCard (Release 0.6 ends here)
+ *   SCOPE_APPROVED     → ApprovedScopeCard + AIStrategyCard (Grey checking whether AI is needed)
+ *   AI_STRATEGY        → AIStrategyCard (review: check again with a preference, approve)
+ *   AI_STRATEGY_APPROVED → ApprovedAIStrategyCard (Release 0.7 ends here)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
+import { AIStrategyCard } from "@/domains/fyp/components/AIStrategyCard";
+import { ApprovedAIStrategyCard } from "@/domains/fyp/components/ApprovedAIStrategyCard";
 import { ApprovedFYPCard } from "@/domains/fyp/components/ApprovedFYPCard";
 import { ApprovedScopeCard } from "@/domains/fyp/components/ApprovedScopeCard";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
@@ -34,7 +38,7 @@ import { SelectedProblemCard } from "@/domains/fyp/components/SelectedProblemCar
 // Stages whose cards show their own progress, so the generic spinner is hidden.
 const STAGES_WITH_OWN_PROGRESS = [
   "EVIDENCE_RESEARCH", "PROBLEM_OPTIONS", "PROBLEM_SELECTED", "AREA_CLASSIFICATION", "FYP_DESIGN",
-  "APPROVED_FYP", "SCOPE",
+  "APPROVED_FYP", "SCOPE", "SCOPE_APPROVED", "AI_STRATEGY",
 ];
 
 export default function Home() {
@@ -115,6 +119,12 @@ export default function Home() {
         <div className="flex flex-col gap-4 mt-4">
           <ProjectDefinitionCard />
           <ApprovedScopeCard />
+        </div>
+
+        {/* ── AI necessity check and AI strategy (Release 0.7) ────────────── */}
+        <div className="flex flex-col gap-4 mt-4">
+          <AIStrategyCard />
+          <ApprovedAIStrategyCard />
         </div>
 
       </div>

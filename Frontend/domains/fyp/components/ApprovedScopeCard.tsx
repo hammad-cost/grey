@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * ApprovedScopeCard — the end of Release 0.6.
+ * ApprovedScopeCard — the end of Release 0.6 (the scope approval).
  *
- * Shown at the SCOPE_APPROVED stage. Summarises what the student committed to:
+ * Shown at the SCOPE_APPROVED stage (also while Grey runs the AI necessity check). Summarises what the student committed to:
  * the FYP title, the core features, and how many optional and out-of-scope
  * features there are. The data comes from the scope_approved event; the title
  * falls back to the Project Brain.
@@ -42,8 +42,7 @@ export function ApprovedScopeCard() {
       )}
 
       <p className="mt-4 text-sm text-gray-400">
-        Saved to your Project Brain. Next, Grey will check whether your project really needs AI (coming in a
-        future release).
+        Saved to your Project Brain. Next, Grey checks whether your project really needs AI.
       </p>
     </section>
   );

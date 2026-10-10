@@ -67,6 +67,10 @@ export type WorkspaceBrainSummary = {
   modelPlanId?: string;
   modelOptionCount?: number;
   modelResearchesLeft?: number;
+  /** Technology stack and hardware (Release 0.10): "running" | "draft" | "approved" | "failed". */
+  technologyStatus?: string;
+  technologyPlanId?: string;
+  technologyReplansLeft?: number;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -149,6 +153,9 @@ export const Actions = {
   FIND_MODELS: "findModels",
   REQUEST_OTHER_MODELS: "requestOtherModels",
   APPROVE_MODELS: "approveModels",
+  PLAN_TECHNOLOGY: "planTechnology",
+  REPLAN_TECHNOLOGY: "replanTechnology",
+  APPROVE_TECHNOLOGY: "approveTechnology",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

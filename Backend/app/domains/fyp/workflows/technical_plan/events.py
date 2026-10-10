@@ -142,7 +142,7 @@ class ArchitectureEventBuilder:
 
 
 def technical_plan_approved_event(workspace_id: str, view: TechnicalPlanView) -> GreyEvent:
-    """The student approved the architecture and evaluation plan. Release 0.11 ends here."""
+    """The student approved the architecture and evaluation plan. Next, Grey checks feasibility (Release 0.12)."""
     return build_event(
         type=EventType.TECHNICAL_PLAN_APPROVED,
         workspace_id=workspace_id,
@@ -151,5 +151,5 @@ def technical_plan_approved_event(workspace_id: str, view: TechnicalPlanView) ->
         status=EventStatus.COMPLETE,
         data={"technical_plan": view.model_dump(mode="json")},
         brain_patch={"workflow_state": WorkflowState.TECHNICAL_PLAN_APPROVED.value, **_view_patch(view)},
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.ASSESS_FEASIBILITY],
     )

@@ -94,9 +94,15 @@ class EventType(str, Enum):
     ARCHITECTURE_FAILED = "architecture_failed"
     TECHNICAL_PLAN_APPROVED = "technical_plan_approved"
 
+    # Release 0.12 — feasibility analysis. Safe activity only, never reasoning.
+    FEASIBILITY_STARTED = "feasibility_started"
+    FEASIBILITY_PROGRESS = "feasibility_progress"
+    FEASIBILITY_READY = "feasibility_ready"                # name from the frontend blueprint
+    FEASIBILITY_FAILED = "feasibility_failed"
+    FEASIBILITY_ACCEPTED = "feasibility_accepted"
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
-    FEASIBILITY_READY = "feasibility_ready"
     SUPERVISOR_READINESS_READY = "supervisor_readiness_ready"
     PROPOSAL_READY = "proposal_ready"
     BRAIN_UPDATED = "brain_updated"
@@ -149,6 +155,8 @@ class AllowedAction(str, Enum):
     APPROVE_TECHNOLOGY = "approveTechnology"
     DESIGN_ARCHITECTURE = "designArchitecture"     # design the architecture and evaluation plan (or retry)
     REDESIGN_ARCHITECTURE = "redesignArchitecture" # make it simpler (up to 2 times)
+    ASSESS_FEASIBILITY = "assessFeasibility"       # check whether the project is feasible (or retry)
+    ACCEPT_FEASIBILITY = "acceptFeasibility"
     APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"
     GO_BACK = "goBack"
     ASK_GREY = "askGrey"

@@ -71,6 +71,11 @@ export type WorkspaceBrainSummary = {
   technologyStatus?: string;
   technologyPlanId?: string;
   technologyReplansLeft?: number;
+  /** Architecture and evaluation plan (Release 0.11): "running" | "draft" | "approved" | "failed". */
+  technicalPlanStatus?: string;
+  technicalPlanId?: string;
+  architectureComponentCount?: number;
+  architectureRedesignsLeft?: number;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -156,6 +161,9 @@ export const Actions = {
   PLAN_TECHNOLOGY: "planTechnology",
   REPLAN_TECHNOLOGY: "replanTechnology",
   APPROVE_TECHNOLOGY: "approveTechnology",
+  DESIGN_ARCHITECTURE: "designArchitecture",
+  REDESIGN_ARCHITECTURE: "redesignArchitecture",
+  APPROVE_TECHNICAL_PLAN: "approveTechnicalPlan",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

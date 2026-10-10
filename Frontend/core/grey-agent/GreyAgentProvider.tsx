@@ -54,6 +54,8 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
     model_plan_id: "modelPlanId",
     technology_status: "technologyStatus",
     technology_plan_id: "technologyPlanId",
+    technical_plan_status: "technicalPlanStatus",
+    technical_plan_id: "technicalPlanId",
   } as const;
   const numberKeys = {
     evidence_count: "evidenceCount",
@@ -66,6 +68,8 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
     model_option_count: "modelOptionCount",
     model_researches_left: "modelResearchesLeft",
     technology_replans_left: "technologyReplansLeft",
+    architecture_component_count: "architectureComponentCount",
+    architecture_redesigns_left: "architectureRedesignsLeft",
   } as const;
 
   const summary: WorkspaceBrainSummary = {};

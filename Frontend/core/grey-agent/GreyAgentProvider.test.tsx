@@ -380,6 +380,44 @@ const technologyApproved = technologyEvent("technology_approved", {
   brain_patch: { workflow_state: "TECHNOLOGY_APPROVED", technology_status: "approved" },
 });
 
+const technologyApprovedDesignNext = technologyEvent("technology_approved", {
+  stage: "TECHNOLOGY_APPROVED",
+  status: "complete",
+  brain_patch: { workflow_state: "TECHNOLOGY_APPROVED", technology_status: "approved" },
+  allowed_actions: ["designArchitecture"],
+});
+
+function architectureEvent(type: string, extra: Partial<GreyEvent> = {}): GreyEvent {
+  return {
+    type,
+    workspace_id: "w_123",
+    domain: "fyp",
+    workflow: "technical_plan",
+    stage: "TECHNOLOGY_APPROVED",
+    status: "running",
+    data: { label: `${type} label`, completed_steps: 1, total_steps: 3 },
+    brain_patch: {},
+    allowed_actions: [],
+    ...extra,
+  };
+}
+
+const architectureStarted = architectureEvent("architecture_started", { brain_patch: { technical_plan_status: "running" } });
+const architectureReady = architectureEvent("architecture_ready", {
+  stage: "ARCHITECTURE",
+  status: "awaiting_user",
+  brain_patch: {
+    workflow_state: "ARCHITECTURE", technical_plan_id: "a-1", technical_plan_status: "draft",
+    architecture_component_count: 6, architecture_redesigns_left: 2,
+  },
+  allowed_actions: ["approveTechnicalPlan", "redesignArchitecture"],
+});
+const technicalPlanApproved = architectureEvent("technical_plan_approved", {
+  stage: "TECHNICAL_PLAN_APPROVED",
+  status: "complete",
+  brain_patch: { workflow_state: "TECHNICAL_PLAN_APPROVED", technical_plan_status: "approved" },
+});
+
 /** A streamed reply with these events, one JSON per line. */
 function streamOf(...events: GreyEvent[]) {
   return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
@@ -394,6 +432,7 @@ function Probe() {
     designFYP, adjustFYPDirection, approveFYPDirection, defineProject, moveScopeItem, approveScope,
     checkAINeed, recheckAIStrategy, approveAIStrategy, findDatasets, requestDatasetAlternative, selectDataset,
     findModels, requestOtherModels, approveModels, planTechnology, replanTechnology, approveTechnology,
+    designArchitecture, redesignArchitecture, approveTechnicalPlan,
   } = useGreyActions();
   return (
     <>
@@ -422,6 +461,9 @@ function Probe() {
       <button onClick={() => planTechnology().catch(() => {})}>plan technology</button>
       <button onClick={() => replanTechnology("simpler").catch(() => {})}>simpler technology</button>
       <button onClick={() => approveTechnology("t-1").catch(() => {})}>approve technology</button>
+      <button onClick={() => designArchitecture().catch(() => {})}>design architecture</button>
+      <button onClick={() => redesignArchitecture("simpler").catch(() => {})}>simpler architecture</button>
+      <button onClick={() => approveTechnicalPlan("a-1").catch(() => {})}>approve technical plan</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -1170,5 +1212,48 @@ describe("GreyAgentProvider", () => {
     await waitFor(() => expect(readState().currentStage).toBe("TECHNOLOGY_APPROVED"));
     expect(fetchMock.mock.calls[3][0]).toMatch(/\/projects\/w_123\/technology\/approve$/);
     expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toEqual({ plan_id: "t-1" });
+  });
+
+  it("approveTechnology designs the architecture straight away when the backend allows it", async () => {
+    replyWith(projectCreated);
+    replyWith(technologyApprovedDesignNext);
+    fetchMock.mockResolvedValueOnce(streamOf(architectureStarted, architectureReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("approve technology"));
+    await waitFor(() => expect(readState().currentStage).toBe("ARCHITECTURE"));
+
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/architecture$/);
+    expect(readState().brainSummary).toMatchObject({
+      technologyStatus: "approved", technicalPlanId: "a-1", technicalPlanStatus: "draft",
+      architectureComponentCount: 6, architectureRedesignsLeft: 2,
+    });
+  });
+
+  it("designArchitecture retries, redesignArchitecture posts the preference, approveTechnicalPlan finishes", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(architectureStarted, architectureReady));
+    fetchMock.mockResolvedValueOnce(streamOf(architectureStarted, architectureReady));
+    replyWith(technicalPlanApproved);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("design architecture"));
+    await waitFor(() => expect(readState().currentStage).toBe("ARCHITECTURE"));
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/architecture$/);
+
+    fireEvent.click(screen.getByText("simpler architecture"));
+    await waitFor(() => expect(fetchMock.mock.calls).toHaveLength(3));
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/architecture\/redesign$/);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ preference: "simpler" });
+
+    await waitFor(() => expect(readState().lastEventType).toBe("architecture_ready"));
+    fireEvent.click(screen.getByText("approve technical plan"));
+    await waitFor(() => expect(readState().currentStage).toBe("TECHNICAL_PLAN_APPROVED"));
+    expect(fetchMock.mock.calls[3][0]).toMatch(/\/projects\/w_123\/architecture\/approve$/);
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toEqual({ plan_id: "a-1" });
   });
 });

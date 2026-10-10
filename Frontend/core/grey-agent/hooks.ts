@@ -55,6 +55,7 @@ const AI_STRATEGY_END_EVENTS = ["ai_strategy_ready", "ai_strategy_failed"];
 const DATASET_END_EVENTS = ["dataset_options_ready", "dataset_search_failed"];
 const MODEL_END_EVENTS = ["models_ready", "model_search_failed"];
 const TECHNOLOGY_END_EVENTS = ["technology_plan_ready", "technology_plan_failed"];
+const ARCHITECTURE_END_EVENTS = ["architecture_ready", "architecture_failed"];
 
 /**
  * POST to a streaming endpoint (with an optional JSON body) and apply every
@@ -562,13 +563,62 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  /** Approve the technology plan (a mandatory decision). Release 0.10 ends here. */
+  /**
+   * Approve the technology plan (a mandatory decision), then — when the backend says
+   * so (technology_approved allows "designArchitecture") — design the architecture and
+   * evaluation plan straight away (Release 0.11).
+   */
   const approveTechnology = useCallback(
+    (planId: string) =>
+      run(async () => {
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${workspaceId}/technology/approve`,
+          { method: "POST", body: JSON.stringify({ plan_id: planId }) }
+        );
+        applyEvent(event);
+        if (!event.allowed_actions.includes(Actions.DESIGN_ARCHITECTURE)) return event;
+
+        return runEventStream(
+          `/projects/${workspaceId}/architecture`, ARCHITECTURE_END_EVENTS, applyEvent, "Designing your architecture"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Design the architecture and evaluation plan (e.g. "Try again" after architecture_failed). */
+  const designArchitecture = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/architecture`, ARCHITECTURE_END_EVENTS, applyEvent, "Designing your architecture"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Ask Grey for a simpler architecture ("simpler", up to 2 times). Streams progress. */
+  const redesignArchitecture = useCallback(
+    (preference: string) =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/architecture/redesign`, ARCHITECTURE_END_EVENTS, applyEvent, "Redesigning",
+          { preference }
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Approve the architecture and evaluation plan (a mandatory decision). Release 0.11 ends here. */
+  const approveTechnicalPlan = useCallback(
     (planId: string) =>
       run(async () => {
         if (!state.workspaceId) throw new Error("No active project.");
         const event = await apiFetch<GreyEvent>(
-          `/projects/${state.workspaceId}/technology/approve`,
+          `/projects/${state.workspaceId}/architecture/approve`,
           { method: "POST", body: JSON.stringify({ plan_id: planId }) }
         );
         applyEvent(event);
@@ -602,5 +652,8 @@ export function useGreyActions() {
     planTechnology,
     replanTechnology,
     approveTechnology,
+    designArchitecture,
+    redesignArchitecture,
+    approveTechnicalPlan,
   };
 }

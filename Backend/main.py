@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.ai_strategy import router as ai_strategy_router
 from app.api.datasets import router as datasets_router
 from app.api.fyp_design import router as fyp_design_router
+from app.api.models import router as models_router
 from app.api.problems import router as problems_router
 from app.api.project_definition import router as project_definition_router
 from app.api.projects import router as projects_router
@@ -46,7 +47,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Grey API",
-    version="0.8.0",
+    version="0.9.0",
     lifespan=lifespan,
 )
 
@@ -65,6 +66,7 @@ app.include_router(fyp_design_router)
 app.include_router(project_definition_router)
 app.include_router(ai_strategy_router)
 app.include_router(datasets_router)
+app.include_router(models_router)
 
 
 @app.get("/health")

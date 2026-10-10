@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.core.brain.schemas import (
     AIStrategyRun,
     DatasetRun,
+    ModelRun,
     FYPDesignRun,
     ProblemRun,
     ProjectDefinitionRun,
@@ -18,6 +19,7 @@ from app.core.brain.schemas import (
 )
 from app.domains.fyp.workflows.ai_strategy.view import AIStrategyView
 from app.domains.fyp.workflows.dataset_discovery.view import DatasetView
+from app.domains.fyp.workflows.model_selection.view import ModelView
 from app.domains.fyp.workflows.fyp_design.view import FYPDesignView
 from app.domains.fyp.workflows.project_definition.view import ProjectDefinitionView
 
@@ -67,3 +69,11 @@ class DatasetsResponse(BaseModel):
     workflow_state: WorkflowState
     datasets: DatasetView | None = None           # None until the AI strategy is approved
     latest_run: DatasetRun | None = None          # the latest search or re-search, None if never run
+
+
+class ModelsResponse(BaseModel):
+    """Body for GET /projects/{workspace_id}/models (Release 0.9)."""
+    workspace_id: str
+    workflow_state: WorkflowState
+    models: ModelView | None = None               # None until a dataset is selected
+    latest_run: ModelRun | None = None

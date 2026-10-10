@@ -17,6 +17,7 @@ from httpx import ASGITransport, AsyncClient
 from langgraph.checkpoint.memory import MemorySaver
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.ai_strategy import get_ai_strategy_graph
 from app.api.fyp_design import get_fyp_design_graph
 from app.api.project_definition import get_project_definition_graph
 from app.api.projects import get_discovery_graph
@@ -27,6 +28,8 @@ from app.core.llm import build_llm_gateway
 from app.core.skills.registry import SkillRegistry
 from app.core.tools.providers.mock_search import MockSearchProvider
 from app.domains.fyp.skills import register_fyp_skills
+from app.domains.fyp.workflows.ai_strategy import build_ai_strategy_graph
+from app.domains.fyp.workflows.ai_strategy import runner as ai_runner
 from app.domains.fyp.workflows.discovery import build_discovery_graph
 from app.domains.fyp.workflows.discovery import problem_runner, research_runner
 from app.domains.fyp.workflows.fyp_design import build_fyp_design_graph
@@ -59,6 +62,7 @@ async def client():
     test_graph = build_discovery_graph(MemorySaver(), skills=skills)
     test_fyp_graph = build_fyp_design_graph(MemorySaver(), skills=skills)
     test_definition_graph = build_project_definition_graph(MemorySaver(), skills=skills)
+    test_ai_graph = build_ai_strategy_graph(MemorySaver(), skills=skills)
 
     # --- Apply overrides ---
     app.dependency_overrides[get_session] = override_get_session
@@ -66,10 +70,12 @@ async def client():
     app.dependency_overrides[get_discovery_graph] = lambda: test_graph
     app.dependency_overrides[get_fyp_design_graph] = lambda: test_fyp_graph
     app.dependency_overrides[get_project_definition_graph] = lambda: test_definition_graph
+    app.dependency_overrides[get_ai_strategy_graph] = lambda: test_ai_graph
     research_runner._active_research.clear()
     problem_runner._active_extractions.clear()
     fyp_runner._active_designs.clear()
     definition_runner._active_definitions.clear()
+    ai_runner._active_checks.clear()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -83,4 +89,5 @@ async def client():
     problem_runner._active_extractions.clear()
     fyp_runner._active_designs.clear()
     definition_runner._active_definitions.clear()
+    ai_runner._active_checks.clear()
     await engine.dispose()

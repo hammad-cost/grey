@@ -6,6 +6,7 @@ These define the shape of what the backend sends back to the frontend.
 from pydantic import BaseModel
 
 from app.core.brain.schemas import (
+    AIStrategyRun,
     FYPDesignRun,
     ProblemRun,
     ProjectDefinitionRun,
@@ -14,6 +15,7 @@ from app.core.brain.schemas import (
     StoredProblemCandidate,
     WorkflowState,
 )
+from app.domains.fyp.workflows.ai_strategy.view import AIStrategyView
 from app.domains.fyp.workflows.fyp_design.view import FYPDesignView
 from app.domains.fyp.workflows.project_definition.view import ProjectDefinitionView
 
@@ -47,3 +49,11 @@ class ProjectDefinitionResponse(BaseModel):
     workflow_state: WorkflowState
     definition: ProjectDefinitionView | None = None        # None until the FYP is approved
     latest_run: ProjectDefinitionRun | None = None         # the latest attempt, None if never run
+
+
+class AIStrategyResponse(BaseModel):
+    """Body for GET /projects/{workspace_id}/ai-strategy (Release 0.7)."""
+    workspace_id: str
+    workflow_state: WorkflowState
+    ai_strategy: AIStrategyView | None = None     # None until the scope is approved
+    latest_run: AIStrategyRun | None = None       # the latest check or re-check, None if never run

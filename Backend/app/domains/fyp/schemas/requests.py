@@ -7,7 +7,7 @@ request body is wrong, FastAPI returns a 422 error before the route runs.
 """
 from pydantic import BaseModel, Field
 
-from app.core.brain.schemas import AIStrategyPreference, FYPAdjustment, ScopeKind
+from app.core.brain.schemas import AIStrategyPreference, DatasetChoice, DatasetPreference, FYPAdjustment, ScopeKind
 from app.domains.fyp.skills.design_fyp.schemas import MAX_NOTE_CHARS
 
 
@@ -56,3 +56,14 @@ class RecheckAIStrategyRequest(BaseModel):
 class ApproveAIStrategyRequest(BaseModel):
     """Body for POST /projects/{workspace_id}/ai-strategy/approve — the id of the AI strategy."""
     strategy_id: str = Field(min_length=1)
+
+
+class ResearchDatasetsRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/datasets/research — how the student wants Grey to search again."""
+    preference: DatasetPreference          # "other_options" or "own_data"
+
+
+class SelectDatasetRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/datasets/select — the recommendation's id and which dataset."""
+    plan_id: str = Field(min_length=1)
+    choice: DatasetChoice                  # "primary" or "alternative"

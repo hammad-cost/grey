@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| Current release | **0.12 — Feasibility analysis: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.11 is complete (local, not pushed). |
-| Current step | **0.12 Step 5 next** (frontend adapter: `assessFeasibility`, `acceptFeasibility`; auto-start after `approveTechnicalPlan`). Steps 1–4 done (backend complete: Brain, skill, workflow, API). Stopped 2026-10-11 because the usage limit was reached. |
-| Last completed step | 0.11 Step 8 — docs + verification: 1171 backend + 15 skipped, 219 frontend, type-check + build OK; fake e2e through a real server OK; live design_architecture run (Groq) OK. |
+| Current release | **0.13 — Supervisor readiness: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.12 is complete (local, not pushed). |
+| Current step | 0.13 Step 1 (plan + Brain storage). |
+| Last completed step | 0.12 Step 8 — docs + verification: 1216 backend + 16 skipped, 228 frontend, type-check + build OK; fake e2e through a real server OK; live assess_feasibility run (Groq) OK. |
 | Next action | Continue the roadmap below, release by release. After each release: full tests, fake e2e, docs + memory, then the next release. Commit locally; **do not push** (the student says "push"). |
 | Last commit | `git log --oneline -10`. `origin/main` = 0.8 docs push; everything after it is local. |
 
@@ -19,8 +19,8 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 | 0.9 | §26 Pretrained models and APIs | `MODEL_SELECTION` → `MODELS_APPROVED` | `find_models` (search + LLM); no-AI projects: deterministic "no model needed", no search, no LLM | ✅ done |
 | 0.10 | §27–29 Technology stack + hardware | `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED` | `plan_technology` (LLM) | ✅ done |
 | 0.11 | §30–31 Architecture + evaluation plan | `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan`) | `design_architecture` (LLM) | ✅ done |
-| 0.12 | §32 Feasibility | `FEASIBILITY` → `FEASIBILITY_ACCEPTED` | `assess_feasibility` (LLM rates dimensions; overall High/Medium/Low computed in code) | building |
-| 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | planned |
+| 0.12 | §32 Feasibility | `FEASIBILITY` → `FEASIBILITY_ACCEPTED` | `assess_feasibility` (LLM rates dimensions; overall High/Medium/Low computed in code) | ✅ done |
+| 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | building |
 | 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | planned |
 
 ## Release 0.12 plan — Feasibility analysis (autonomous run, 2026-10-11)
@@ -33,9 +33,9 @@ Scope: blueprint Step 21 (§32). Boundary: `TECHNICAL_PLAN_APPROVED → (assess)
 | 2 | Skill `assess_feasibility`: **facts in plain code** (evidence strength from the problem's evidence tiers, data availability from the selected dataset, hardware and cost from the technology plan, evaluation possibility and demonstrability from the technical plan); **judgement by the LLM** (problem relevance, technical complexity, time, external dependencies, ethical / legal, risk, novelty) + 1–5 main risks with mitigations + summary; overall computed in code; checks; prompt; fake answers | ✅ `3da1a4f + fix 8136462` |
 | 3 | `feasibility` workflow (assess → review interrupt: accept → END), runner, events, view; `technical_plan_approved` allows `assessFeasibility` | ✅ `8e81fb7` |
 | 4 | API: `POST /feasibility` (stream), `POST /feasibility/accept`, `GET /feasibility` | ✅ `1165ca5` |
-| 5 | Frontend adapter: `assessFeasibility`, `acceptFeasibility`; auto-start after `approveTechnicalPlan` | |
-| 6 | `FeasibilityCard` (overall badge, the 13 dimensions, main risks), `AcceptedFeasibilityCard`; `feasibility.ts` | |
-| 7 | Docs + full verification + fake e2e + live Groq run | |
+| 5 | Frontend adapter: `assessFeasibility`, `acceptFeasibility`; auto-start after `approveTechnicalPlan` | ✅ `11a9f5c` |
+| 6 | `FeasibilityCard` (overall badge, the 13 dimensions, main risks), `AcceptedFeasibilityCard`; `feasibility.ts` | ✅ `36e297d` |
+| 7 | Docs + full verification + fake e2e + live Groq run | ✅ `docs commit` |
 
 Decisions: the overall rating is never the model's opinion — code computes it from the 13 levels (favourable 2 / moderate 1 / concern 0; 3+ concerns → Low; a concern on time or technical complexity caps it at Medium; average ≥ 1.5 → High, ≥ 1.0 → Medium, else Low); no re-assessment (it is an analysis of approved decisions, not a choice); a Low result shows a clear warning but can still be accepted (Grey can't go back to earlier stages yet); acceptance with confirm.
 

@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-11 (Release 0.11)
+**Last updated:** 2026-10-11 (Release 0.12)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -30,6 +30,7 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F15 | Pretrained models and APIs (search, 0–3 options with a use, re-searches, approval) | ✅ (mock search + fake LLM by default; skill live-tested with real search + Groq) | 0.9 |
 | F16 | Technology stack and hardware (decisions with reasons, hardware, simpler re-plans, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.10 |
 | F17 | Architecture and evaluation plan (pipeline, data flows, metrics, system tests, redesigns, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.11 |
+| F18 | Feasibility analysis (13 dimensions, computed overall, risks, acceptance) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.12 |
 
 ---
 
@@ -343,3 +344,20 @@ After the technology plan is approved, Grey designs the architecture and how the
 | Skill | `design_architecture` — `validation.py` (incl. approved-technology check), `skill.py`, `fake.py`; prompt `design_architecture.v1` |
 | Project Brain | `architecture_run`, `technical_plan`; stages `TECHNOLOGY_APPROVED` → `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED`; rules in `app/core/brain/architecture_rules.py` |
 | Tests | Backend: `test_brain_architecture.py` (23), `test_design_architecture_skill.py` (24), `test_technical_plan_workflow.py` (7), `test_architecture_api.py` (4), live `test_architecture_live.py`. Frontend: adapter (2 new), `ArchitectureCard.test.tsx` (8) |
+
+---
+
+## F18 — Feasibility analysis (Release 0.12)
+
+After the technical plan is approved, Grey checks whether the project is realistic (blueprint §32): six dimensions from facts, seven judged by the model, an overall High / Medium / Low computed in code.
+
+| Layer | Detail |
+|---|---|
+| UI | `FeasibilityCard` (checklist; Try again; overall badge + reason; 13 dimensions with facts / judgement marker; risks; Low warning; **Accept and continue** with confirm), `AcceptedFeasibilityCard` — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.feasibility` (incl. `dimension_names`); `brainSummary` (`feasibilityStatus`, `feasibilityReportId`, `feasibilityOverall`); `Frontend/domains/fyp/feasibility.ts` |
+| Adapter actions | `approveTechnicalPlan(id)` continues into `/feasibility` when the backend allows `assessFeasibility`; `assessFeasibility()`, `acceptFeasibility(reportId)` |
+| API | `POST /projects/{id}/feasibility` (stream; 409 technical plan not approved / already checked / running), `POST /projects/{id}/feasibility/accept {report_id}`, `GET /projects/{id}/feasibility` — `Backend/app/api/feasibility.py` |
+| Runner / workflow | `start_feasibility()`, `FeasibilitySession.events()`, `accept_feasibility_report()`; graph `feasibility` — `Backend/app/domains/fyp/workflows/feasibility/` |
+| Skill | `assess_feasibility` — `facts.py`, `validation.py`, `skill.py`, `fake.py`; prompt `assess_feasibility.v1` |
+| Project Brain | `feasibility_run`, `feasibility_report`; stages `TECHNICAL_PLAN_APPROVED` → `FEASIBILITY` → `FEASIBILITY_ACCEPTED`; rules and the overall rating in `app/core/brain/feasibility_rules.py` |
+| Tests | Backend: `test_brain_feasibility.py` (16), `test_assess_feasibility_skill.py` (20), `test_feasibility_workflow.py` (6), `test_feasibility_api.py` (3), live `test_feasibility_live.py`. Frontend: adapter (2 new), `FeasibilityCard.test.tsx` (7) |

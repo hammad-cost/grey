@@ -249,6 +249,17 @@ approveTechnology → technology_approved (allows designArchitecture) → adapte
     architecture_review ⏸  redesign "simpler" (≤2) ↺  |  approve → TECHNICAL_PLAN_APPROVED → technical_plan_approved
 ```
 
+### Feasibility path (Release 0.12)
+
+```
+approveTechnicalPlan → technical_plan_approved (allows assessFeasibility) → adapter POSTs /feasibility
+  feasibility graph
+    assess_feasibility → facts.py (6 dimensions from the Brain) + model (7 judged, risks, summary)
+                       → validation → overall High / Medium / Low computed in feasibility_rules.py
+                       → runner saves the report (FEASIBILITY) → feasibility_ready
+    feasibility_review ⏸  accept → FEASIBILITY_ACCEPTED → feasibility_accepted
+```
+
 ## 3. Two kinds of state
 
 | | Project Brain | LangGraph state |

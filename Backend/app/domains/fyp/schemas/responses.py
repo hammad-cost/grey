@@ -9,6 +9,7 @@ from app.core.brain.schemas import (
     AIStrategyRun,
     DatasetRun,
     ModelRun,
+    TechnologyRun,
     FYPDesignRun,
     ProblemRun,
     ProjectDefinitionRun,
@@ -20,6 +21,7 @@ from app.core.brain.schemas import (
 from app.domains.fyp.workflows.ai_strategy.view import AIStrategyView
 from app.domains.fyp.workflows.dataset_discovery.view import DatasetView
 from app.domains.fyp.workflows.model_selection.view import ModelView
+from app.domains.fyp.workflows.technology_plan.view import TechnologyView
 from app.domains.fyp.workflows.fyp_design.view import FYPDesignView
 from app.domains.fyp.workflows.project_definition.view import ProjectDefinitionView
 
@@ -77,3 +79,11 @@ class ModelsResponse(BaseModel):
     workflow_state: WorkflowState
     models: ModelView | None = None               # None until a dataset is selected
     latest_run: ModelRun | None = None
+
+
+class TechnologyResponse(BaseModel):
+    """Body for GET /projects/{workspace_id}/technology (Release 0.10)."""
+    workspace_id: str
+    workflow_state: WorkflowState
+    technology: TechnologyView | None = None      # None until the model plan is approved
+    latest_run: TechnologyRun | None = None

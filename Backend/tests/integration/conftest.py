@@ -23,6 +23,7 @@ from app.api.fyp_design import get_fyp_design_graph
 from app.api.models import get_model_graph
 from app.api.project_definition import get_project_definition_graph
 from app.api.projects import get_discovery_graph
+from app.api.technology import get_technology_graph
 from app.core.brain.database import get_session, get_session_factory
 from app.core.brain.models import Base
 from app.core.config.settings import Settings
@@ -42,6 +43,8 @@ from app.domains.fyp.workflows.model_selection import build_model_graph
 from app.domains.fyp.workflows.model_selection import runner as model_runner
 from app.domains.fyp.workflows.project_definition import build_project_definition_graph
 from app.domains.fyp.workflows.project_definition import runner as definition_runner
+from app.domains.fyp.workflows.technology_plan import build_technology_graph
+from app.domains.fyp.workflows.technology_plan import runner as technology_runner
 from main import app
 
 
@@ -71,6 +74,7 @@ async def client():
     test_ai_graph = build_ai_strategy_graph(MemorySaver(), skills=skills)
     test_dataset_graph = build_dataset_graph(MemorySaver(), skills=skills)
     test_model_graph = build_model_graph(MemorySaver(), skills=skills)
+    test_technology_graph = build_technology_graph(MemorySaver(), skills=skills)
 
     # --- Apply overrides ---
     app.dependency_overrides[get_session] = override_get_session
@@ -81,6 +85,7 @@ async def client():
     app.dependency_overrides[get_ai_strategy_graph] = lambda: test_ai_graph
     app.dependency_overrides[get_dataset_graph] = lambda: test_dataset_graph
     app.dependency_overrides[get_model_graph] = lambda: test_model_graph
+    app.dependency_overrides[get_technology_graph] = lambda: test_technology_graph
     research_runner._active_research.clear()
     problem_runner._active_extractions.clear()
     fyp_runner._active_designs.clear()
@@ -88,6 +93,7 @@ async def client():
     ai_runner._active_checks.clear()
     dataset_runner._active_searches.clear()
     model_runner._active_searches.clear()
+    technology_runner._active_plans.clear()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -104,4 +110,5 @@ async def client():
     ai_runner._active_checks.clear()
     dataset_runner._active_searches.clear()
     model_runner._active_searches.clear()
+    technology_runner._active_plans.clear()
     await engine.dispose()

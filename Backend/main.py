@@ -11,6 +11,7 @@ from app.api.problems import router as problems_router
 from app.api.project_definition import router as project_definition_router
 from app.api.projects import router as projects_router
 from app.api.research import router as research_router
+from app.api.technology import router as technology_router
 from app.core.brain.database import create_all_tables
 from app.core.config import settings
 from app.core.llm import build_llm_gateway
@@ -47,7 +48,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Grey API",
-    version="0.9.0",
+    version="0.10.0",
     lifespan=lifespan,
 )
 
@@ -67,6 +68,7 @@ app.include_router(project_definition_router)
 app.include_router(ai_strategy_router)
 app.include_router(datasets_router)
 app.include_router(models_router)
+app.include_router(technology_router)
 
 
 @app.get("/health")

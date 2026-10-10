@@ -14,6 +14,7 @@ from app.core.brain.schemas import (
     FYPAdjustment,
     ModelPreference,
     ScopeKind,
+    TechnologyPreference,
 )
 from app.domains.fyp.skills.design_fyp.schemas import MAX_NOTE_CHARS
 
@@ -83,4 +84,14 @@ class ResearchModelsRequest(BaseModel):
 
 class ApproveModelsRequest(BaseModel):
     """Body for POST /projects/{workspace_id}/models/approve — the id of the model plan."""
+    plan_id: str = Field(min_length=1)
+
+
+class ReplanTechnologyRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/technology/replan."""
+    preference: TechnologyPreference       # "simpler"
+
+
+class ApproveTechnologyRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/technology/approve — the id of the technology plan."""
     plan_id: str = Field(min_length=1)

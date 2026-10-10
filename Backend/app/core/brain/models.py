@@ -25,6 +25,8 @@ architecture_run — one row per technical plan or redesign (Release 0.11).
 technical_plan   — the architecture and evaluation plan, one per project.
 feasibility_run    — one row per feasibility analysis attempt (Release 0.12).
 feasibility_report — the feasibility report, one per project.
+readiness_run    — one row per supervisor brief attempt (Release 0.13).
+supervisor_brief — readiness checks, summary and likely questions, one per project.
 
 Together they are the authoritative state of a student's FYP journey.
 Chat history and LangGraph runtime state are NOT stored here —
@@ -670,3 +672,43 @@ class FeasibilityReportRecord(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ReadinessRunRecord(Base):
+    """One attempt at the supervisor brief (Release 0.13)."""
+
+    __tablename__ = "readiness_run"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    feasibility_report_id: Mapped[str] = mapped_column(String, ForeignKey("feasibility_report.id"))
+
+    status: Mapped[str] = mapped_column(String)                     # ReadinessRunStatus value
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SupervisorBriefRecord(Base):
+    """The readiness checks, supervisor-ready summary and likely questions (Release 0.13). One per project."""
+
+    __tablename__ = "supervisor_brief"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), unique=True, index=True
+    )
+    feasibility_report_id: Mapped[str] = mapped_column(String, ForeignKey("feasibility_report.id"))
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("readiness_run.id"))
+    status: Mapped[str] = mapped_column(String)                     # SupervisorBriefStatus value
+
+    brief: Mapped[dict] = mapped_column(JSON)                       # SupervisorBrief, always read as a whole
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

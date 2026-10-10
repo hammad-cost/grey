@@ -42,7 +42,8 @@ class WorkflowState(str, Enum):
     TECHNICAL_PLAN_APPROVED = "TECHNICAL_PLAN_APPROVED"   # Release 0.11 ends here: architecture + evaluation approved
     FEASIBILITY = "FEASIBILITY"                    # Release 0.12: the student reviews the feasibility report
     FEASIBILITY_ACCEPTED = "FEASIBILITY_ACCEPTED"  # Release 0.12 ends here: the student accepted it
-    SUPERVISOR_READINESS = "SUPERVISOR_READINESS"
+    SUPERVISOR_READINESS = "SUPERVISOR_READINESS"  # Release 0.13: the student reviews the supervisor brief
+    SUPERVISOR_READY = "SUPERVISOR_READY"          # Release 0.13 ends here: the student confirmed they're ready
     PROPOSAL_GENERATION = "PROPOSAL_GENERATION"
     COMPLETE = "COMPLETE"
 
@@ -1169,6 +1170,109 @@ class FeasibilityRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Supervisor readiness (Release 0.13) ───────────────────────────────────────
+
+class ReadinessCheckId(str, Enum):
+    """The checks Grey runs before the proposal (blueprint §33)."""
+    PROBLEM_CLEAR = "problem_clear"
+    EVIDENCE_SUPPORTED = "evidence_supported"
+    CONTRIBUTION_CLEAR = "contribution_clear"
+    DATASET_AVAILABLE = "dataset_available"
+    AI_JUSTIFIED = "ai_justified"
+    SCOPE_REALISTIC = "scope_realistic"
+    TECHNOLOGY_ACCESSIBLE = "technology_accessible"
+    EVALUATION_POSSIBLE = "evaluation_possible"
+    RISKS_UNDERSTOOD = "risks_understood"
+
+
+class ReadinessStatus(str, Enum):
+    PASS = "pass"
+    ATTENTION = "attention"      # a weakness to resolve or discuss with the supervisor
+
+
+class ReadinessCheck(BaseModel):
+    check: ReadinessCheckId
+    question: str = Field(min_length=1)       # e.g. "Is the problem supported by evidence?"
+    status: ReadinessStatus
+    detail: str = Field(min_length=1)          # what Grey found, and what to do if it needs attention
+
+
+class SummaryItem(BaseModel):
+    """One line of the supervisor-ready summary (blueprint §34), taken straight from the Project Brain."""
+    label: str = Field(min_length=1)          # e.g. "Dataset"
+    value: str = Field(min_length=1)
+
+
+class SupervisorQuestionId(str, Enum):
+    """The likely supervisor questions (blueprint §35)."""
+    WHY_THIS_PROBLEM = "why_this_problem"
+    EVIDENCE = "evidence"
+    USERS = "users"
+    EXISTING_SOLUTIONS = "existing_solutions"
+    CONTRIBUTION = "contribution"
+    WHY_AI = "why_ai"
+    DATASET_SOURCE = "dataset_source"
+    MODEL_EVALUATION = "model_evaluation"
+    LIMITATIONS = "limitations"
+    TIMELINE = "timeline"
+
+
+class SupervisorQuestion(BaseModel):
+    id: SupervisorQuestionId
+    question: str = Field(min_length=1)
+    talking_points: list[str] = Field(min_length=2, max_length=4)
+
+
+class SupervisorBrief(BaseModel):
+    """The readiness checks, the supervisor-ready summary and the likely questions."""
+    checks: list[ReadinessCheck] = Field(min_length=9, max_length=9)
+    summary: list[SummaryItem] = Field(min_length=1)
+    questions: list[SupervisorQuestion] = Field(min_length=10, max_length=10)
+
+    @property
+    def ready(self) -> bool:
+        return all(check.status == ReadinessStatus.PASS for check in self.checks)
+
+
+class SupervisorBriefStatus(str, Enum):
+    DRAFT = "draft"
+    CONFIRMED = "confirmed"
+
+
+class StoredSupervisorBrief(BaseModel):
+    """The supervisor brief as read back from the Project Brain."""
+    id: str
+    workspace_id: str
+    feasibility_report_id: str
+    run_id: str
+    status: SupervisorBriefStatus
+    brief: SupervisorBrief
+    created_at: datetime
+    confirmed_at: datetime | None = None
+
+
+class ReadinessRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class ReadinessRun(BaseModel):
+    """One attempt at the supervisor brief."""
+    id: str
+    workspace_id: str
+    feasibility_report_id: str
+    status: ReadinessRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -1232,6 +1336,10 @@ class WorkspaceBrainSnapshot(BaseModel):
     # Feasibility analysis (Release 0.12).
     feasibility_report: StoredFeasibilityReport | None = None
     feasibility_run: FeasibilityRun | None = None
+
+    # Supervisor readiness (Release 0.13).
+    supervisor_brief: StoredSupervisorBrief | None = None
+    readiness_run: ReadinessRun | None = None
 
     created_at: datetime
     updated_at: datetime

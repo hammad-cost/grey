@@ -7,7 +7,7 @@ problem_run, problem_candidate, problem_evidence, functional_area,
 fyp_design_run, fyp_design, project_definition_run, project_definition,
 scope_item, ai_strategy_run, ai_strategy, dataset_run, dataset_plan, model_run, model_plan,
 technology_run, technology_plan, architecture_run, technical_plan,
-feasibility_run, feasibility_report).
+feasibility_run, feasibility_report, readiness_run, supervisor_brief).
 Everything else (API routes, workflows, skills) calls this repository —
 they never touch the database directly.
 
@@ -40,8 +40,10 @@ from app.core.brain.models import (
     ProblemRunRecord,
     ProjectDefinitionRecord,
     ProjectDefinitionRunRecord,
+    ReadinessRunRecord,
     ResearchRunRecord,
     ScopeItemRecord,
+    SupervisorBriefRecord,
     TechnicalPlanRecord,
     TechnologyPlanRecord,
     TechnologyRunRecord,
@@ -49,7 +51,7 @@ from app.core.brain.models import (
 )
 from app.core.brain.ai_strategy_rules import check_strategy, recheck_problem
 from app.core.brain.dataset_rules import check_plan, research_problem
-from app.core.brain import architecture_rules, feasibility_rules, model_rules, technology_rules
+from app.core.brain import architecture_rules, feasibility_rules, model_rules, supervisor_rules, technology_rules
 from app.core.brain.ai_strategy_rules import uses_ai
 from app.core.brain.schemas import (
     MAX_AI_STRATEGY_RECHECKS,
@@ -110,6 +112,11 @@ from app.core.brain.schemas import (
     StoredTechnologyPlan,
     StoredTechnicalPlan,
     StoredFeasibilityReport,
+    StoredSupervisorBrief,
+    ReadinessRun,
+    ReadinessRunStatus,
+    SupervisorBrief,
+    SupervisorBriefStatus,
     FeasibilityReport,
     FeasibilityRun,
     FeasibilityRunStatus,
@@ -161,6 +168,9 @@ STALE_ARCHITECTURE_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for feasibility analyses (Release 0.12).
 STALE_FEASIBILITY_RUN_AFTER = timedelta(minutes=10)
+
+# The same rule for supervisor briefs (Release 0.13).
+STALE_READINESS_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for project definition runs (Release 0.6).
 STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
@@ -244,6 +254,14 @@ class FeasibilityRunAlreadyRunningError(Exception):
 
 class FeasibilityError(ValueError):
     """The feasibility step isn't allowed now."""
+
+
+class ReadinessRunAlreadyRunningError(Exception):
+    """A supervisor brief is already being prepared for this project."""
+
+
+class ReadinessError(ValueError):
+    """The supervisor readiness step isn't allowed now."""
 
 
 class FYPDesignError(ValueError):
@@ -409,6 +427,8 @@ class WorkspaceBrainRepository:
         snapshot.architecture_run = await self.get_latest_architecture_run(record.workspace_id)
         snapshot.feasibility_report = await self.get_feasibility_report(record.workspace_id)
         snapshot.feasibility_run = await self.get_latest_feasibility_run(record.workspace_id)
+        snapshot.supervisor_brief = await self.get_supervisor_brief(record.workspace_id)
+        snapshot.readiness_run = await self.get_latest_readiness_run(record.workspace_id)
         return snapshot
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -2762,3 +2782,177 @@ class WorkspaceBrainRepository:
         await self._session.commit()
         await self._session.refresh(record)
         return self._to_stored_feasibility(record)
+
+    # ── Supervisor readiness (Release 0.13) ───────────────────────────────────
+
+    async def _brief_record(self, workspace_id: str) -> SupervisorBriefRecord | None:
+        result = await self._session.execute(
+            select(SupervisorBriefRecord).where(SupervisorBriefRecord.workspace_id == workspace_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _latest_readiness_run_record(self, workspace_id: str) -> ReadinessRunRecord | None:
+        result = await self._session.execute(
+            select(ReadinessRunRecord)
+            .where(ReadinessRunRecord.workspace_id == workspace_id)
+            .order_by(ReadinessRunRecord.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_readiness_run_record(self, run_id: str) -> ReadinessRunRecord:
+        run = await self._session.get(ReadinessRunRecord, run_id)
+        if run is None:
+            raise ValueError(f"Readiness run '{run_id}' not found.")
+        return run
+
+    @staticmethod
+    def _to_stored_brief(record: SupervisorBriefRecord) -> StoredSupervisorBrief:
+        return StoredSupervisorBrief(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            feasibility_report_id=record.feasibility_report_id,
+            run_id=record.run_id,
+            status=SupervisorBriefStatus(record.status),
+            brief=record.brief,
+            created_at=record.created_at,
+            confirmed_at=record.confirmed_at,
+        )
+
+    async def get_supervisor_brief(self, workspace_id: str) -> StoredSupervisorBrief | None:
+        """The supervisor brief (draft or confirmed), or None until Grey has prepared it."""
+        record = await self._brief_record(workspace_id)
+        return self._to_stored_brief(record) if record else None
+
+    async def get_latest_readiness_run(self, workspace_id: str) -> ReadinessRun | None:
+        run = await self._latest_readiness_run_record(workspace_id)
+        return ReadinessRun.model_validate(run) if run else None
+
+    async def start_readiness_run(self, workspace_id: str) -> ReadinessRun:
+        """
+        Record that Grey has started the supervisor brief. Allowed only at
+        FEASIBILITY_ACCEPTED with no brief yet (a failed attempt can be retried).
+
+        Raises:
+            ValueError, ReadinessError, ReadinessRunAlreadyRunningError (unless the running one is stale).
+        """
+        workspace = await self._require_record(workspace_id)
+        feasibility = await self._feasibility_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.FEASIBILITY_ACCEPTED.value
+            or feasibility is None
+            or feasibility.status != FeasibilityStatus.ACCEPTED.value
+        ):
+            raise ReadinessError(
+                f"Grey prepares the supervisor brief only after feasibility is accepted (stage: {workspace.workflow_state})."
+            )
+        if await self._brief_record(workspace_id) is not None:
+            raise ReadinessError("Grey has already prepared the supervisor brief.")
+
+        latest = await self._latest_readiness_run_record(workspace_id)
+        if latest is not None and latest.status == ReadinessRunStatus.RUNNING.value:
+            age = datetime.now(timezone.utc) - _as_utc(latest.started_at)
+            if age < STALE_READINESS_RUN_AFTER:
+                raise ReadinessRunAlreadyRunningError(
+                    f"Grey is already preparing the supervisor brief for workspace '{workspace_id}'."
+                )
+            latest.status = ReadinessRunStatus.FAILED.value
+            latest.error = "Supervisor brief did not finish (marked as stale)."
+            latest.completed_at = datetime.now(timezone.utc)
+
+        run = ReadinessRunRecord(
+            workspace_id=workspace_id,
+            feasibility_report_id=feasibility.id,
+            status=ReadinessRunStatus.RUNNING.value,
+            started_at=datetime.now(timezone.utc),
+        )
+        self._session.add(run)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ReadinessRun.model_validate(run)
+
+    async def complete_readiness_run(
+        self,
+        run_id: str,
+        brief: SupervisorBrief,
+        *,
+        brief_id: str | None = None,
+        provider: str,
+        model: str,
+        prompt_version: str,
+    ) -> StoredSupervisorBrief:
+        """
+        Save the supervisor brief and move the project to SUPERVISOR_READINESS, in one commit.
+
+        Raises:
+            ValueError:                 the run isn't running, or the stage is wrong.
+            SupervisorBriefRuleError:   the brief breaks a rule in supervisor_rules.py.
+        """
+        run = await self._require_readiness_run_record(run_id)
+        if run.status != ReadinessRunStatus.RUNNING.value:
+            raise ValueError(f"Readiness run '{run_id}' is not running (status: {run.status}).")
+        supervisor_rules.check_brief(brief)
+        workspace = await self._require_record(run.workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.FEASIBILITY_ACCEPTED.value
+            or await self._brief_record(run.workspace_id) is not None
+        ):
+            raise ValueError(f"The supervisor brief can't be saved now (stage: {workspace.workflow_state}).")
+        now = datetime.now(timezone.utc)
+        record = SupervisorBriefRecord(
+            id=brief_id or str(uuid.uuid4()),
+            workspace_id=run.workspace_id,
+            feasibility_report_id=run.feasibility_report_id,
+            run_id=run.id,
+            status=SupervisorBriefStatus.DRAFT.value,
+            brief=brief.model_dump(mode="json"),
+            created_at=now,
+        )
+        self._session.add(record)
+        workspace.workflow_state = WorkflowState.SUPERVISOR_READINESS.value
+        workspace.updated_at = now
+        run.status = ReadinessRunStatus.COMPLETE.value
+        run.completed_at = now
+        run.provider = provider
+        run.model = model
+        run.prompt_version = prompt_version
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_brief(record)
+
+    async def fail_readiness_run(self, run_id: str, error: str) -> ReadinessRun:
+        """Mark a supervisor brief attempt as failed."""
+        run = await self._require_readiness_run_record(run_id)
+        run.status = ReadinessRunStatus.FAILED.value
+        run.error = error
+        run.completed_at = datetime.now(timezone.utc)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return ReadinessRun.model_validate(run)
+
+    async def confirm_supervisor_ready(self, workspace_id: str, brief_id: str) -> StoredSupervisorBrief:
+        """
+        Record that the student has read the brief and is ready for the proposal.
+        The project moves to SUPERVISOR_READY in the same commit.
+
+        Raises:
+            ValueError, ReadinessError (no draft brief, or `brief_id` isn't this project's).
+        """
+        workspace = await self._require_record(workspace_id)
+        record = await self._brief_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.SUPERVISOR_READINESS.value
+            or record is None
+            or record.status != SupervisorBriefStatus.DRAFT.value
+        ):
+            raise ReadinessError(f"There is no supervisor brief to confirm (stage: {workspace.workflow_state}).")
+        if record.id != brief_id:
+            raise ReadinessError(f"'{brief_id}' is not this project's supervisor brief.")
+        now = datetime.now(timezone.utc)
+        record.status = SupervisorBriefStatus.CONFIRMED.value
+        record.confirmed_at = now
+        workspace.workflow_state = WorkflowState.SUPERVISOR_READY.value
+        workspace.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_brief(record)

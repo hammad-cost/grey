@@ -23,6 +23,23 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 | 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | building |
 | 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | planned |
 
+## Release 0.13 plan — Supervisor readiness (autonomous run, 2026-10-11)
+
+Scope: blueprint Steps 22–24 (§33 Supervisor Readiness Check, §34 Supervisor-Ready Summary, §35 Likely Supervisor Questions).
+Boundary: `FEASIBILITY_ACCEPTED → (prepare) → SUPERVISOR_READINESS (review) → SUPERVISOR_READY`.
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | Brain: `readiness_run`, `supervisor_brief` (readiness checks, summary, questions with talking points); stage `SUPERVISOR_READY`; repository + snapshot | |
+| 2 | Skill `prepare_supervisor_brief`: the 9 readiness checks **in plain code** from the Brain (pass / needs attention, with what to do); the 14-field summary **assembled in plain code** from approved decisions (no AI, so nothing can drift); the 10 blueprint questions fixed in code, **talking points (2–4 each) written by the LLM** from the approved decisions; checks; prompt; fake answers | |
+| 3 | `supervisor_readiness` workflow (prepare → review interrupt: confirm → END), runner, events, view; `feasibility_accepted` allows `prepareSupervisorBrief` | |
+| 4 | API: `POST /supervisor-brief` (stream), `POST /supervisor-brief/confirm`, `GET /supervisor-brief` | |
+| 5 | Frontend adapter: `prepareSupervisorBrief`, `confirmSupervisorReady`; auto-start after `acceptFeasibility` | |
+| 6 | `SupervisorReadinessCard` (checks, summary, questions with talking points), `SupervisorReadyCard`; `supervisorBrief.ts` | |
+| 7 | Docs + full verification + fake e2e + live Groq run | |
+
+Decisions: checks that need attention can't send the student back (no `goBack` yet), so they are shown with what to do / what to discuss with the supervisor, and the student can still confirm; "ready" = every check passes. Summary fields come straight from the Brain (traceable). Confirm with a confirm step.
+
 ## Release 0.12 plan — Feasibility analysis (autonomous run, 2026-10-11)
 
 Scope: blueprint Step 21 (§32). Boundary: `TECHNICAL_PLAN_APPROVED → (assess) → FEASIBILITY (review) → FEASIBILITY_ACCEPTED`.

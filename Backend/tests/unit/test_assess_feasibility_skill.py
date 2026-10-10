@@ -130,7 +130,7 @@ def test_a_good_reply_becomes_a_full_report_with_a_computed_overall():
     assert reason is None
     assert [d.dimension for d in report.dimensions] == list(FeasibilityDimension)
     assert report.overall == OverallFeasibility.HIGH
-    assert report.overall_reason.== "10 of 13 dimensions are favourable, 3 moderate and 0 a concern."
+    assert report.overall_reason == "10 of 13 dimensions are favourable, 3 moderate and 0 a concern."
 
 
 def test_concerns_lower_the_overall_rating():

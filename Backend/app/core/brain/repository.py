@@ -5,7 +5,7 @@ The only place in the codebase that reads from and writes to the
 Project Brain tables (workspace_brain, research_run, evidence_source,
 problem_run, problem_candidate, problem_evidence, functional_area,
 fyp_design_run, fyp_design, project_definition_run, project_definition,
-scope_item).
+scope_item, ai_strategy_run, ai_strategy).
 Everything else (API routes, workflows, skills) calls this repository —
 they never touch the database directly.
 
@@ -20,6 +20,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.brain.models import (
+    AIStrategyRecord,
+    AIStrategyRunRecord,
     EvidenceSourceRecord,
     FunctionalAreaRecord,
     FYPDesignRecord,
@@ -33,8 +35,15 @@ from app.core.brain.models import (
     ScopeItemRecord,
     WorkspaceBrainRecord,
 )
+from app.core.brain.ai_strategy_rules import check_strategy, recheck_problem
 from app.core.brain.schemas import (
+    MAX_AI_STRATEGY_RECHECKS,
     MAX_FYP_ADJUSTMENTS,
+    AIStrategy,
+    AIStrategyPreference,
+    AIStrategyRun,
+    AIStrategyRunStatus,
+    AIStrategyStatus,
     MAX_PROBLEM_OPTIONS,
     DecisionStatus,
     EvidenceSource,
@@ -63,6 +72,7 @@ from app.core.brain.schemas import (
     StoredFunctionalArea,
     StoredFYPDesign,
     StoredProblemCandidate,
+    StoredAIStrategy,
     StoredProjectDefinition,
     StoredScopeItem,
     WorkflowState,
@@ -82,6 +92,9 @@ STALE_FYP_DESIGN_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for project definition runs (Release 0.6).
 STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
+
+# The same rule for AI necessity checks (Release 0.7).
+STALE_AI_STRATEGY_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for project definition runs (Release 0.6).
 STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
@@ -117,6 +130,14 @@ class ProjectDefinitionRunAlreadyRunningError(Exception):
 
 class ProjectDefinitionError(ValueError):
     """The project definition or scope step is not allowed right now."""
+
+
+class AIStrategyRunAlreadyRunningError(Exception):
+    """Raised when an AI necessity check is already running for a workspace."""
+
+
+class AIStrategyError(ValueError):
+    """The AI necessity check, a re-check or the approval is not allowed right now."""
 
 
 class FYPDesignError(ValueError):
@@ -270,6 +291,8 @@ class WorkspaceBrainRepository:
         snapshot.fyp_design_run = await self.get_latest_fyp_design_run(record.workspace_id)
         snapshot.project_definition = await self.get_project_definition(record.workspace_id)
         snapshot.project_definition_run = await self.get_latest_project_definition_run(record.workspace_id)
+        snapshot.ai_strategy = await self.get_ai_strategy(record.workspace_id)
+        snapshot.ai_strategy_run = await self.get_latest_ai_strategy_run(record.workspace_id)
         return snapshot
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -1250,3 +1273,243 @@ class WorkspaceBrainRepository:
         await self._session.commit()
         await self._session.refresh(record)
         return await self._to_stored_definition(record)
+
+    # ── AI necessity check and AI / ML strategy (Release 0.7) ────────────────
+
+    async def _ai_strategy_record(self, workspace_id: str) -> AIStrategyRecord | None:
+        result = await self._session.execute(
+            select(AIStrategyRecord).where(AIStrategyRecord.workspace_id == workspace_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _latest_ai_run_record(self, workspace_id: str) -> AIStrategyRunRecord | None:
+        result = await self._session.execute(
+            select(AIStrategyRunRecord)
+            .where(AIStrategyRunRecord.workspace_id == workspace_id)
+            .order_by(AIStrategyRunRecord.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_ai_run_record(self, run_id: str) -> AIStrategyRunRecord:
+        run = await self._session.get(AIStrategyRunRecord, run_id)
+        if run is None:
+            raise ValueError(f"AI strategy run '{run_id}' not found.")
+        return run
+
+    @staticmethod
+    def _to_stored_ai_strategy(record: AIStrategyRecord) -> StoredAIStrategy:
+        return StoredAIStrategy(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            definition_id=record.definition_id,
+            run_id=record.run_id,
+            status=AIStrategyStatus(record.status),
+            strategy=record.strategy,
+            rechecks_used=record.rechecks_used,
+            preference=record.preference,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            approved_at=record.approved_at,
+        )
+
+    async def get_ai_strategy(self, workspace_id: str) -> StoredAIStrategy | None:
+        """The AI strategy (draft or approved), or None until Grey has checked the project."""
+        record = await self._ai_strategy_record(workspace_id)
+        return self._to_stored_ai_strategy(record) if record else None
+
+    async def get_latest_ai_strategy_run(self, workspace_id: str) -> AIStrategyRun | None:
+        """The most recent AI necessity check (first check or re-check), or None."""
+        run = await self._latest_ai_run_record(workspace_id)
+        return AIStrategyRun.model_validate(run) if run else None
+
+    async def start_ai_strategy_run(
+        self, workspace_id: str, preference: AIStrategyPreference | None = None
+    ) -> AIStrategyRun:
+        """
+        Record that Grey has started an AI necessity check.
+
+        Without a preference (the first check): allowed only at SCOPE_APPROVED,
+        with an approved definition and no strategy yet (a failed attempt can be retried).
+        With a preference (a re-check): allowed only at AI_STRATEGY while the
+        strategy is a draft, re-checks are left, and the preference makes sense
+        for the current strategy (see ai_strategy_rules.recheck_problem).
+
+        Raises:
+            ValueError:                        the project does not exist.
+            AIStrategyError:                   not allowed now (see above).
+            AIStrategyRunAlreadyRunningError:  a check is already in progress.
+                A run stuck in "running" longer than STALE_AI_STRATEGY_RUN_AFTER
+                is marked failed instead, so a crashed run can't block forever.
+        """
+        workspace = await self._require_record(workspace_id)
+        definition = await self._definition_record(workspace_id)
+        strategy = await self._ai_strategy_record(workspace_id)
+
+        if preference is None:
+            if (
+                workspace.workflow_state != WorkflowState.SCOPE_APPROVED.value
+                or definition is None
+                or definition.status != ProjectDefinitionStatus.APPROVED.value
+            ):
+                raise AIStrategyError(
+                    f"Grey checks the AI need only after the scope is approved (stage: {workspace.workflow_state})."
+                )
+            if strategy is not None:
+                raise AIStrategyError("The AI need has already been checked.")
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.AI_STRATEGY.value
+                or strategy is None
+                or strategy.status != AIStrategyStatus.DRAFT.value
+            ):
+                raise AIStrategyError(f"There is no AI strategy to check again (stage: {workspace.workflow_state}).")
+            if strategy.rechecks_used >= MAX_AI_STRATEGY_RECHECKS:
+                raise AIStrategyError(
+                    f"All {MAX_AI_STRATEGY_RECHECKS} re-checks have been used. You can approve the AI strategy."
+                )
+            problem = recheck_problem(AIStrategy.model_validate(strategy.strategy), preference)
+            if problem is not None:
+                raise AIStrategyError(problem)
+
+        latest = await self._latest_ai_run_record(workspace_id)
+        if latest is not None and latest.status == AIStrategyRunStatus.RUNNING.value:
+            age = datetime.now(timezone.utc) - _as_utc(latest.started_at)
+            if age < STALE_AI_STRATEGY_RUN_AFTER:
+                raise AIStrategyRunAlreadyRunningError(
+                    f"The AI need is already being checked for workspace '{workspace_id}'."
+                )
+            latest.status = AIStrategyRunStatus.FAILED.value
+            latest.error = "AI necessity check did not finish (marked as stale)."
+            latest.completed_at = datetime.now(timezone.utc)
+
+        run = AIStrategyRunRecord(
+            workspace_id=workspace_id,
+            definition_id=definition.id,
+            preference=preference.value if preference else None,
+            status=AIStrategyRunStatus.RUNNING.value,
+            # Set explicitly so a new run always sorts after the one it replaces.
+            started_at=datetime.now(timezone.utc),
+        )
+        self._session.add(run)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return AIStrategyRun.model_validate(run)
+
+    async def complete_ai_strategy_run(
+        self,
+        run_id: str,
+        strategy: AIStrategy,
+        *,
+        strategy_id: str | None = None,
+        provider: str,
+        model: str,
+        prompt_version: str,
+    ) -> StoredAIStrategy:
+        """
+        Save the result of an AI necessity check and mark the run complete, in one commit.
+
+        First check: the strategy is created and the project moves to AI_STRATEGY
+        (the student reviews it). `strategy_id` lets the workflow choose the id,
+        so its review step and the Brain agree.
+        Re-check: the draft strategy is replaced and one re-check is used up.
+
+        Raises:
+            ValueError:          the run does not exist or is not running, or the
+                                 project isn't at the stage the run started from.
+            AIStrategyRuleError: the strategy breaks a rule in ai_strategy_rules.py.
+        """
+        run = await self._require_ai_run_record(run_id)
+        if run.status != AIStrategyRunStatus.RUNNING.value:
+            raise ValueError(f"AI strategy run '{run_id}' is not running (status: {run.status}).")
+        check_strategy(strategy)
+        workspace = await self._require_record(run.workspace_id)
+        record = await self._ai_strategy_record(run.workspace_id)
+        now = datetime.now(timezone.utc)
+
+        if run.preference is None:
+            if workspace.workflow_state != WorkflowState.SCOPE_APPROVED.value or record is not None:
+                raise ValueError(f"The AI strategy can't be saved now (stage: {workspace.workflow_state}).")
+            record = AIStrategyRecord(
+                id=strategy_id or str(uuid.uuid4()),
+                workspace_id=run.workspace_id,
+                definition_id=run.definition_id,
+                run_id=run.id,
+                status=AIStrategyStatus.DRAFT.value,
+                strategy=strategy.model_dump(mode="json"),
+                rechecks_used=0,
+                created_at=now,
+                updated_at=now,
+            )
+            self._session.add(record)
+            workspace.workflow_state = WorkflowState.AI_STRATEGY.value
+        else:
+            if (
+                workspace.workflow_state != WorkflowState.AI_STRATEGY.value
+                or record is None
+                or record.status != AIStrategyStatus.DRAFT.value
+            ):
+                raise ValueError(f"The AI strategy can't be replaced now (stage: {workspace.workflow_state}).")
+            record.strategy = strategy.model_dump(mode="json")
+            record.run_id = run.id
+            record.rechecks_used += 1
+            record.preference = run.preference
+            record.updated_at = now
+
+        run.status = AIStrategyRunStatus.COMPLETE.value
+        run.completed_at = now
+        run.provider = provider
+        run.model = model
+        run.prompt_version = prompt_version
+        workspace.updated_at = now
+
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_ai_strategy(record)
+
+    async def fail_ai_strategy_run(self, run_id: str, error: str) -> AIStrategyRun:
+        """
+        Mark an AI necessity check as failed (a failed re-check doesn't use one up).
+
+        Raises:
+            ValueError: the run does not exist.
+        """
+        run = await self._require_ai_run_record(run_id)
+
+        run.status = AIStrategyRunStatus.FAILED.value
+        run.error = error
+        run.completed_at = datetime.now(timezone.utc)
+
+        await self._session.commit()
+        await self._session.refresh(run)
+        return AIStrategyRun.model_validate(run)
+
+    async def approve_ai_strategy(self, workspace_id: str, strategy_id: str) -> StoredAIStrategy:
+        """
+        Record the student's approval of the AI strategy (a mandatory decision).
+        The project moves to AI_STRATEGY_APPROVED in the same commit.
+
+        Raises:
+            ValueError:      the project does not exist.
+            AIStrategyError: there is no draft strategy, or `strategy_id` isn't this project's.
+        """
+        workspace = await self._require_record(workspace_id)
+        record = await self._ai_strategy_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.AI_STRATEGY.value
+            or record is None
+            or record.status != AIStrategyStatus.DRAFT.value
+        ):
+            raise AIStrategyError(f"There is no AI strategy to approve (stage: {workspace.workflow_state}).")
+        if record.id != strategy_id:
+            raise AIStrategyError(f"'{strategy_id}' is not this project's AI strategy.")
+
+        now = datetime.now(timezone.utc)
+        record.status = AIStrategyStatus.APPROVED.value
+        record.approved_at = now
+        workspace.workflow_state = WorkflowState.AI_STRATEGY_APPROVED.value
+        workspace.updated_at = now
+
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_ai_strategy(record)

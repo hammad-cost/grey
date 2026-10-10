@@ -29,8 +29,9 @@ class WorkflowState(str, Enum):
     APPROVED_FYP = "APPROVED_FYP"          # Release 0.5 ends here: the student approved the FYP design
     SCOPE = "SCOPE"                        # Release 0.6: the student reviews the project definition and scope
     SCOPE_APPROVED = "SCOPE_APPROVED"      # Release 0.6 ends here: the student approved the scope
+    AI_STRATEGY = "AI_STRATEGY"            # Release 0.7: the student reviews the AI necessity check and strategy
+    AI_STRATEGY_APPROVED = "AI_STRATEGY_APPROVED"  # Release 0.7 ends here: the student approved the AI strategy
     DATASET_DISCOVERY = "DATASET_DISCOVERY"
-    AI_STRATEGY = "AI_STRATEGY"
     TECHNOLOGY_PLAN = "TECHNOLOGY_PLAN"
     ARCHITECTURE = "ARCHITECTURE"
     EVALUATION = "EVALUATION"
@@ -488,6 +489,123 @@ class ProjectDefinitionRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── AI necessity check and AI / ML strategy (Release 0.7) ─────────────────────
+
+# How many times the student can ask Grey to check again with a preference.
+MAX_AI_STRATEGY_RECHECKS = 2
+
+
+class AINecessity(str, Enum):
+    """Does this project actually need AI? (blueprint §22). Grey never forces AI in."""
+    AI_NECESSARY = "ai_necessary"          # AI is necessary
+    AI_OPTIONAL = "ai_optional"            # AI is useful but optional
+    TRADITIONAL_ML = "traditional_ml"      # traditional machine learning is sufficient
+    RULE_BASED = "rule_based"              # a rule-based approach is better
+    OPTIMIZATION = "optimization"          # optimization is more appropriate
+    EXISTING_MODEL = "existing_model"      # an existing model or API is sufficient
+    NOT_REQUIRED = "not_required"          # AI is not required
+
+
+class AITaskType(str, Enum):
+    """The technical AI task, when AI is used (blueprint §23)."""
+    CLASSIFICATION = "classification"
+    REGRESSION = "regression"
+    FORECASTING = "forecasting"
+    ANOMALY_DETECTION = "anomaly_detection"
+    COMPUTER_VISION = "computer_vision"
+    OBJECT_DETECTION = "object_detection"
+    NLP = "nlp"
+    RECOMMENDATION = "recommendation"
+    CLUSTERING = "clustering"
+    TIME_SERIES_ANALYSIS = "time_series_analysis"
+    RETRIEVAL = "retrieval"
+    GENERATIVE_AI = "generative_ai"
+
+
+class AIApproach(str, Enum):
+    """How the AI part is built (blueprint §23): one primary approach, maybe one fallback."""
+    TRAIN_MODEL = "train_model"
+    FINE_TUNE = "fine_tune"                # fine-tune an existing model
+    PRETRAINED_MODEL = "pretrained_model"  # use a pretrained model as it is
+    USE_API = "use_api"
+    HYBRID = "hybrid"
+
+
+class AIStrategyPreference(str, Enum):
+    """
+    The controlled ways a student can ask Grey to check again. There is
+    deliberately no "use more AI" option: Grey never forces AI into a project.
+    """
+    WITHOUT_AI = "without_ai"              # "Can I do this without AI?"
+    EXISTING_MODEL = "existing_model"      # use a ready-made model or service instead of building one
+
+
+class StrategyChoice(BaseModel):
+    """One implementation approach and why it fits."""
+    approach: AIApproach
+    reason: str = Field(min_length=1)
+
+
+class AIStrategy(BaseModel):
+    """
+    The AI necessity check and, when AI is used, the AI / ML strategy.
+    The consistency rules (e.g. no task type when AI isn't used) live in
+    ai_strategy_rules.py. Never names a specific dataset, model or API —
+    those are chosen in later stages.
+    """
+    necessity: AINecessity
+    necessity_reason: str = Field(min_length=1)       # why this verdict, for this project
+    without_ai: str = Field(min_length=1)             # how the project could work without AI
+    ai_component: str | None = None                   # which part uses AI (None when AI isn't used)
+    non_ai_components: list[str] = Field(min_length=1, max_length=6)
+    task_type: AITaskType | None = None
+    primary_strategy: StrategyChoice | None = None
+    fallback_strategy: StrategyChoice | None = None
+
+
+class AIStrategyStatus(str, Enum):
+    DRAFT = "draft"          # the student is reviewing it (and may ask Grey to check again)
+    APPROVED = "approved"
+
+
+class StoredAIStrategy(BaseModel):
+    """The AI strategy as read back from the Project Brain."""
+    id: str
+    workspace_id: str
+    definition_id: str                       # the approved project definition it was checked against
+    run_id: str
+    status: AIStrategyStatus
+    strategy: AIStrategy
+    rechecks_used: int = 0
+    preference: AIStrategyPreference | None = None   # what the student asked for in the latest re-check
+    created_at: datetime
+    updated_at: datetime
+    approved_at: datetime | None = None
+
+
+class AIStrategyRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class AIStrategyRun(BaseModel):
+    """One attempt at the AI necessity check (the first one, or a re-check)."""
+    id: str
+    workspace_id: str
+    definition_id: str
+    preference: AIStrategyPreference | None = None   # None for the first check
+    status: AIStrategyRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -525,6 +643,11 @@ class WorkspaceBrainSnapshot(BaseModel):
     # definition, and the latest attempt at writing it.
     project_definition: StoredProjectDefinition | None = None
     project_definition_run: ProjectDefinitionRun | None = None
+
+    # AI necessity check and strategy (Release 0.7): the draft or approved
+    # strategy, and the latest attempt.
+    ai_strategy: StoredAIStrategy | None = None
+    ai_strategy_run: AIStrategyRun | None = None
 
     created_at: datetime
     updated_at: datetime

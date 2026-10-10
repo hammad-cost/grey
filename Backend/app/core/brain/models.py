@@ -13,6 +13,8 @@ fyp_design        — one row per version of the FYP design (draft / superseded 
 project_definition_run — one row per attempt at writing the project definition (Release 0.6).
 project_definition     — the problem definition and proposed solution, one per project.
 scope_item             — one row per feature in the scope (core / optional / out of scope).
+ai_strategy_run — one row per AI necessity check or re-check (Release 0.7).
+ai_strategy     — the AI necessity verdict and AI / ML strategy, one per project.
 
 Together they are the authoritative state of a student's FYP journey.
 Chat history and LangGraph runtime state are NOT stored here —
@@ -375,3 +377,54 @@ class ScopeItemRecord(Base):
     position: Mapped[int] = mapped_column(Integer)                  # order inside its list
     title: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text)
+
+
+class AIStrategyRunRecord(Base):
+    """One AI necessity check: the first one, or a re-check the student asked for (Release 0.7)."""
+
+    __tablename__ = "ai_strategy_run"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    definition_id: Mapped[str] = mapped_column(String, ForeignKey("project_definition.id"))
+    preference: Mapped[str | None] = mapped_column(String, nullable=True)   # AIStrategyPreference value
+
+    status: Mapped[str] = mapped_column(String)                     # AIStrategyRunStatus value
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Filled in when the run completes: which LLM made the check
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Filled in when the run fails
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AIStrategyRecord(Base):
+    """
+    The AI necessity verdict and AI / ML strategy (Release 0.7). One per
+    project; a re-check replaces the strategy (each attempt stays in ai_strategy_run).
+    """
+
+    __tablename__ = "ai_strategy"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), unique=True, index=True
+    )
+    definition_id: Mapped[str] = mapped_column(String, ForeignKey("project_definition.id"))
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("ai_strategy_run.id"))   # the run that wrote it
+    status: Mapped[str] = mapped_column(String)                     # AIStrategyStatus value
+
+    strategy: Mapped[dict] = mapped_column(JSON)                    # AIStrategy, always read as a whole
+
+    rechecks_used: Mapped[int] = mapped_column(Integer, default=0)
+    preference: Mapped[str | None] = mapped_column(String, nullable=True)   # the latest re-check's preference
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

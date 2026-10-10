@@ -238,6 +238,17 @@ approveModels → models_approved (allows planTechnology) → adapter POSTs /tec
     technology_review ⏸  replan "simpler" (≤2) ↺  |  approve → TECHNOLOGY_APPROVED → technology_approved
 ```
 
+### Architecture path (Release 0.11)
+
+```
+approveTechnology → technology_approved (allows designArchitecture) → adapter POSTs /architecture
+  technical_plan graph
+    design_architecture → DesignArchitectureSkill (structured_reasoning) → validation (approved technologies only)
+                          + architecture_rules (connected diagram, AI parts, task-matched metrics, baseline)
+                        → runner saves the plan (ARCHITECTURE) → architecture_ready
+    architecture_review ⏸  redesign "simpler" (≤2) ↺  |  approve → TECHNICAL_PLAN_APPROVED → technical_plan_approved
+```
+
 ## 3. Two kinds of state
 
 | | Project Brain | LangGraph state |

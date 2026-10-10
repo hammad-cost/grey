@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-11 (Release 0.10)
+**Last updated:** 2026-10-11 (Release 0.11)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -29,6 +29,7 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F14 | Dataset discovery (search, primary + alternative, re-searches, selection) | ✅ (mock search + fake LLM by default; skill live-tested with real search + Groq) | 0.8 |
 | F15 | Pretrained models and APIs (search, 0–3 options with a use, re-searches, approval) | ✅ (mock search + fake LLM by default; skill live-tested with real search + Groq) | 0.9 |
 | F16 | Technology stack and hardware (decisions with reasons, hardware, simpler re-plans, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.10 |
+| F17 | Architecture and evaluation plan (pipeline, data flows, metrics, system tests, redesigns, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.11 |
 
 ---
 
@@ -325,3 +326,20 @@ After the model plan is approved, Grey recommends one technology per needed stac
 | Skill | `plan_technology` — `validation.py` (incl. option-list check), `skill.py`, `fake.py`; prompt `plan_technology.v1` |
 | Project Brain | `technology_run`, `technology_plan`; stages `MODELS_APPROVED` → `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED`; rules in `app/core/brain/technology_rules.py` |
 | Tests | Backend: `test_brain_technology.py` (14), `test_plan_technology_skill.py` (21), `test_technology_workflow.py` (9), `test_technology_api.py` (6), live `test_technology_live.py`. Frontend: adapter (2 new), `TechnologyPlanCard.test.tsx` (10) |
+
+---
+
+## F17 — System architecture and evaluation plan (Release 0.11)
+
+After the technology plan is approved, Grey designs the architecture and how the student will prove the system works (blueprint §30–31); the student approves both as one technical plan.
+
+| Layer | Detail |
+|---|---|
+| UI | `ArchitectureCard` (checklist; Try again; pipeline diagram ordered by the flows; data flows; metrics with goal / why; system tests; baseline; **Make it simpler** with N of 2 left; **Approve technical plan** with confirm), `ApprovedTechnicalPlanCard` — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.technical_plan`; `brainSummary` (`technicalPlanStatus`, `technicalPlanId`, `architectureComponentCount`, `architectureRedesignsLeft`); `Frontend/domains/fyp/architecture.ts` |
+| Adapter actions | `approveTechnology(id)` continues into `/architecture` when the backend allows `designArchitecture`; `designArchitecture()`, `redesignArchitecture(preference)`, `approveTechnicalPlan(planId)` |
+| API | `POST /projects/{id}/architecture` (stream; 409 technology not approved / already designed / running), `POST /projects/{id}/architecture/redesign {preference}` (stream; 409 / 422), `POST /projects/{id}/architecture/approve {plan_id}`, `GET /projects/{id}/architecture` — `Backend/app/api/architecture.py` |
+| Runner / workflow | `start_technical_plan()`, `start_architecture_redesign()`, `ArchitectureSession.events()`, `approve_technical_plan()`; graph `technical_plan` — `Backend/app/domains/fyp/workflows/technical_plan/` |
+| Skill | `design_architecture` — `validation.py` (incl. approved-technology check), `skill.py`, `fake.py`; prompt `design_architecture.v1` |
+| Project Brain | `architecture_run`, `technical_plan`; stages `TECHNOLOGY_APPROVED` → `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED`; rules in `app/core/brain/architecture_rules.py` |
+| Tests | Backend: `test_brain_architecture.py` (23), `test_design_architecture_skill.py` (24), `test_technical_plan_workflow.py` (7), `test_architecture_api.py` (4), live `test_architecture_live.py`. Frontend: adapter (2 new), `ArchitectureCard.test.tsx` (8) |

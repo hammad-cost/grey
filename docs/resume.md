@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| Current release | **0.11 — Architecture and evaluation plan: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.10 is complete (local, not pushed). |
-| Current step | 0.11 Step 1 (plan + Brain storage). |
-| Last completed step | 0.10 Step 8 — docs + verification: 1113 backend + 14 skipped, 209 frontend, type-check + build OK; fake e2e through a real server OK; live plan_technology run (Groq) OK. |
+| Current release | **0.12 — Feasibility analysis: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.11 is complete (local, not pushed). |
+| Current step | 0.12 Step 1 (plan + Brain storage). |
+| Last completed step | 0.11 Step 8 — docs + verification: 1171 backend + 15 skipped, 219 frontend, type-check + build OK; fake e2e through a real server OK; live design_architecture run (Groq) OK. |
 | Next action | Continue the roadmap below, release by release. After each release: full tests, fake e2e, docs + memory, then the next release. Commit locally; **do not push** (the student says "push"). |
 | Last commit | `git log --oneline -10`. `origin/main` = 0.8 docs push; everything after it is local. |
 
@@ -18,8 +18,8 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 |---|---|---|---|---|
 | 0.9 | §26 Pretrained models and APIs | `MODEL_SELECTION` → `MODELS_APPROVED` | `find_models` (search + LLM); no-AI projects: deterministic "no model needed", no search, no LLM | ✅ done |
 | 0.10 | §27–29 Technology stack + hardware | `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED` | `plan_technology` (LLM) | ✅ done |
-| 0.11 | §30–31 Architecture + evaluation plan | `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan`) | `design_architecture` (LLM) | building |
-| 0.12 | §32 Feasibility | `FEASIBILITY` → `FEASIBILITY_ACCEPTED` | `assess_feasibility` (LLM rates dimensions; overall High/Medium/Low computed in code) | planned |
+| 0.11 | §30–31 Architecture + evaluation plan | `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan`) | `design_architecture` (LLM) | ✅ done |
+| 0.12 | §32 Feasibility | `FEASIBILITY` → `FEASIBILITY_ACCEPTED` | `assess_feasibility` (LLM rates dimensions; overall High/Medium/Low computed in code) | building |
 | 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | planned |
 | 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | planned |
 
@@ -29,13 +29,13 @@ Scope: blueprint Steps 19–20 (§30 System Architecture, §31 Evaluation Plan).
 
 | Step | What | Commit |
 |---|---|---|
-| 1 | Brain: `architecture_run`, `technical_plan` (summary; architecture = 4–10 components + flows; evaluation = metrics, system tests, baseline); stage `TECHNICAL_PLAN_APPROVED`; `architecture_rules.py`; repository + snapshot | |
-| 2 | Skill `design_architecture` (LLM): components (data source, processing, model, rules, backend, storage, interface, user, external service) derived from the approved design, modules, dataset, models and stack; flows between them; AI metrics (accuracy, precision, recall, F1, AUC, MAE, RMSE, false alarm rate, detection rate) chosen for the task, each with why and a goal; system tests (functional, usability, response time, baseline comparison, user evaluation); checks; prompt; fake answers | |
-| 3 | `technical_plan` workflow (design → review interrupt: redesign ↺ / approve → END), runner, events, view; `technology_approved` allows `designArchitecture` | |
-| 4 | API: `POST /architecture` (stream), `POST /architecture/redesign` (stream), `POST /architecture/approve`, `GET /architecture` | |
-| 5 | Frontend adapter: `designArchitecture`, `redesignArchitecture`, `approveTechnicalPlan`; auto-start after `approveTechnology` | |
-| 6 | `ArchitectureCard` (pipeline diagram + evaluation), `ApprovedTechnicalPlanCard`; `architecture.ts` | |
-| 7 | Docs + full verification + fake e2e + live Groq run | |
+| 1 | Brain: `architecture_run`, `technical_plan` (summary; architecture = 4–10 components + flows; evaluation = metrics, system tests, baseline); stage `TECHNICAL_PLAN_APPROVED`; `architecture_rules.py`; repository + snapshot | ✅ `82b5ad6` |
+| 2 | Skill `design_architecture` (LLM): components (data source, processing, model, rules, backend, storage, interface, user, external service) derived from the approved design, modules, dataset, models and stack; flows between them; AI metrics (accuracy, precision, recall, F1, AUC, MAE, RMSE, false alarm rate, detection rate) chosen for the task, each with why and a goal; system tests (functional, usability, response time, baseline comparison, user evaluation); checks; prompt; fake answers | ✅ `97504e5` |
+| 3 | `technical_plan` workflow (design → review interrupt: redesign ↺ / approve → END), runner, events, view; `technology_approved` allows `designArchitecture` | ✅ `0514bc5` |
+| 4 | API: `POST /architecture` (stream), `POST /architecture/redesign` (stream), `POST /architecture/approve`, `GET /architecture` | ✅ `808e0f8` |
+| 5 | Frontend adapter: `designArchitecture`, `redesignArchitecture`, `approveTechnicalPlan`; auto-start after `approveTechnology` | ✅ `d9da74a` |
+| 6 | `ArchitectureCard` (pipeline diagram + evaluation), `ApprovedTechnicalPlanCard`; `architecture.ts` | ✅ `124d308` |
+| 7 | Docs + full verification + fake e2e + live Groq run | ✅ `docs commit` |
 
 Decisions: plain-code rules check the diagram (unique ids, every flow between known components, every component connected, a user and an interface, a model component and AI metrics only when the project uses AI, metrics that match the AI task — error metrics for regression / forecasting, detection metrics for classification-type tasks, a baseline named when a baseline comparison is planned); one controlled redesign "Make it simpler" (max 2); approval with confirm.
 

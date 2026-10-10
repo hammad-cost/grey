@@ -116,7 +116,7 @@ class SupervisorBriefEventBuilder:
 
 
 def supervisor_ready_event(workspace_id: str, view: SupervisorBriefView) -> GreyEvent:
-    """The student confirmed they're ready for the supervisor. Release 0.13 ends here."""
+    """The student confirmed they're ready for the supervisor. Next, Grey writes the proposal (Release 0.14)."""
     return build_event(
         type=EventType.SUPERVISOR_READY_CONFIRMED,
         workspace_id=workspace_id,
@@ -125,5 +125,5 @@ def supervisor_ready_event(workspace_id: str, view: SupervisorBriefView) -> Grey
         status=EventStatus.COMPLETE,
         data={"supervisor_brief": view.model_dump(mode="json")},
         brain_patch={"workflow_state": WorkflowState.SUPERVISOR_READY.value, **_view_patch(view)},
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.GENERATE_PROPOSAL],
     )

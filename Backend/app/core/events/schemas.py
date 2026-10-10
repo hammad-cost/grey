@@ -108,9 +108,15 @@ class EventType(str, Enum):
     SUPERVISOR_BRIEF_FAILED = "supervisor_brief_failed"
     SUPERVISOR_READY_CONFIRMED = "supervisor_ready_confirmed"
 
+    # Release 0.14 — proposal generation. Safe activity only, never reasoning.
+    PROPOSAL_STARTED = "proposal_started"
+    PROPOSAL_PROGRESS = "proposal_progress"
+    PROPOSAL_READY = "proposal_ready"                      # name from the frontend blueprint
+    PROPOSAL_FAILED = "proposal_failed"
+    PROPOSAL_FINALIZED = "proposal_finalized"              # the FYP journey is complete
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
-    PROPOSAL_READY = "proposal_ready"
     BRAIN_UPDATED = "brain_updated"
     CHANGE_IMPACT_READY = "change_impact_ready"
     ERROR = "error"
@@ -165,6 +171,8 @@ class AllowedAction(str, Enum):
     ACCEPT_FEASIBILITY = "acceptFeasibility"
     PREPARE_SUPERVISOR_BRIEF = "prepareSupervisorBrief"   # readiness checks, summary, likely questions (or retry)
     CONFIRM_SUPERVISOR_READY = "confirmSupervisorReady"
+    REWRITE_PROPOSAL_SECTION = "rewriteProposalSection"   # rewrite one narrative section (up to 3 times)
+    FINALIZE_PROPOSAL = "finalizeProposal"
     APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"
     GO_BACK = "goBack"
     ASK_GREY = "askGrey"

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * ApprovedAIStrategyCard — the end of Release 0.7.
+ * ApprovedAIStrategyCard — the approved AI strategy (Release 0.7).
  *
  * Shown at the AI_STRATEGY_APPROVED stage. Summarises what the student
  * committed to: Grey's verdict and, when AI is used, the AI task and the main
@@ -40,8 +40,7 @@ export function ApprovedAIStrategyCard() {
       )}
 
       <p className="mt-4 text-sm text-gray-400">
-        Saved to your Project Brain. Next, Grey will look for datasets that fit your project (coming in a future
-        release).
+        Saved to your Project Brain. Next, Grey looks for datasets that fit your project.
       </p>
     </section>
   );

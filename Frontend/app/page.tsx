@@ -17,7 +17,9 @@
  *   SCOPE              → ProjectDefinitionCard (review: move features, approve the scope)
  *   SCOPE_APPROVED     → ApprovedScopeCard + AIStrategyCard (Grey checking whether AI is needed)
  *   AI_STRATEGY        → AIStrategyCard (review: check again with a preference, approve)
- *   AI_STRATEGY_APPROVED → ApprovedAIStrategyCard (Release 0.7 ends here)
+ *   AI_STRATEGY_APPROVED → ApprovedAIStrategyCard + DatasetRecommendationCard (Grey looking for datasets)
+ *   DATASET_DISCOVERY  → DatasetRecommendationCard (review: search again, select one of two datasets)
+ *   DATASET_SELECTED   → SelectedDatasetCard (Release 0.8 ends here)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
@@ -26,6 +28,7 @@ import { ApprovedAIStrategyCard } from "@/domains/fyp/components/ApprovedAIStrat
 import { ApprovedFYPCard } from "@/domains/fyp/components/ApprovedFYPCard";
 import { ApprovedScopeCard } from "@/domains/fyp/components/ApprovedScopeCard";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
+import { DatasetRecommendationCard } from "@/domains/fyp/components/DatasetRecommendationCard";
 import { FunctionalAreaCard } from "@/domains/fyp/components/FunctionalAreaCard";
 import { FYPDirectionCard } from "@/domains/fyp/components/FYPDirectionCard";
 import { IndustrySelector } from "@/domains/fyp/components/IndustrySelector";
@@ -33,12 +36,13 @@ import { ProblemOptions } from "@/domains/fyp/components/ProblemOptions";
 import { ProblemProgressCard } from "@/domains/fyp/components/ProblemProgressCard";
 import { ProjectDefinitionCard } from "@/domains/fyp/components/ProjectDefinitionCard";
 import { ResearchProgressCard } from "@/domains/fyp/components/ResearchProgressCard";
+import { SelectedDatasetCard } from "@/domains/fyp/components/SelectedDatasetCard";
 import { SelectedProblemCard } from "@/domains/fyp/components/SelectedProblemCard";
 
 // Stages whose cards show their own progress, so the generic spinner is hidden.
 const STAGES_WITH_OWN_PROGRESS = [
   "EVIDENCE_RESEARCH", "PROBLEM_OPTIONS", "PROBLEM_SELECTED", "AREA_CLASSIFICATION", "FYP_DESIGN",
-  "APPROVED_FYP", "SCOPE", "SCOPE_APPROVED", "AI_STRATEGY",
+  "APPROVED_FYP", "SCOPE", "SCOPE_APPROVED", "AI_STRATEGY", "AI_STRATEGY_APPROVED", "DATASET_DISCOVERY",
 ];
 
 export default function Home() {
@@ -125,6 +129,12 @@ export default function Home() {
         <div className="flex flex-col gap-4 mt-4">
           <AIStrategyCard />
           <ApprovedAIStrategyCard />
+        </div>
+
+        {/* ── Dataset discovery (Release 0.8) ─────────────────────────────── */}
+        <div className="flex flex-col gap-4 mt-4">
+          <DatasetRecommendationCard />
+          <SelectedDatasetCard />
         </div>
 
       </div>

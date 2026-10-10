@@ -258,6 +258,51 @@ const aiApproved = aiEvent("ai_strategy_approved", {
   brain_patch: { workflow_state: "AI_STRATEGY_APPROVED", ai_strategy_status: "approved" },
 });
 
+const aiApprovedFindNext = aiEvent("ai_strategy_approved", {
+  stage: "AI_STRATEGY_APPROVED",
+  status: "complete",
+  brain_patch: { workflow_state: "AI_STRATEGY_APPROVED", ai_strategy_status: "approved" },
+  allowed_actions: ["findDatasets"],
+});
+
+/** A dataset event, shaped like the backend's streamed events. */
+function datasetEvent(type: string, extra: Partial<GreyEvent> = {}): GreyEvent {
+  return {
+    type,
+    workspace_id: "w_123",
+    domain: "fyp",
+    workflow: "dataset_discovery",
+    stage: "AI_STRATEGY_APPROVED",
+    status: "running",
+    data: { label: `${type} label`, completed_steps: 1, total_steps: 4 },
+    brain_patch: {},
+    allowed_actions: [],
+    ...extra,
+  };
+}
+
+const datasetStarted = datasetEvent("dataset_search_started", { brain_patch: { dataset_status: "running" } });
+const datasetReady = datasetEvent("dataset_options_ready", {
+  stage: "DATASET_DISCOVERY",
+  status: "awaiting_user",
+  brain_patch: {
+    workflow_state: "DATASET_DISCOVERY",
+    dataset_plan_id: "plan-1",
+    dataset_status: "draft",
+    dataset_researches_left: 2,
+  },
+  allowed_actions: ["selectDataset", "requestDatasetAlternative"],
+});
+const datasetSelected = datasetEvent("dataset_selected", {
+  stage: "DATASET_SELECTED",
+  status: "complete",
+  brain_patch: {
+    workflow_state: "DATASET_SELECTED",
+    dataset_status: "selected",
+    dataset_selected: "Vessel tracks",
+  },
+});
+
 /** A streamed reply with these events, one JSON per line. */
 function streamOf(...events: GreyEvent[]) {
   return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
@@ -270,7 +315,7 @@ function Probe() {
   const {
     startProject, selectIndustry, selectBranch, startResearch, extractProblems, selectProblem,
     designFYP, adjustFYPDirection, approveFYPDirection, defineProject, moveScopeItem, approveScope,
-    checkAINeed, recheckAIStrategy, approveAIStrategy,
+    checkAINeed, recheckAIStrategy, approveAIStrategy, findDatasets, requestDatasetAlternative, selectDataset,
   } = useGreyActions();
   return (
     <>
@@ -290,6 +335,9 @@ function Probe() {
       <button onClick={() => checkAINeed().catch(() => {})}>check ai</button>
       <button onClick={() => recheckAIStrategy("without_ai").catch(() => {})}>recheck without ai</button>
       <button onClick={() => approveAIStrategy("ai-1").catch(() => {})}>approve ai</button>
+      <button onClick={() => findDatasets().catch(() => {})}>find datasets</button>
+      <button onClick={() => requestDatasetAlternative("own_data").catch(() => {})}>own data</button>
+      <button onClick={() => selectDataset("plan-1", "alternative").catch(() => {})}>select alternative</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -860,6 +908,90 @@ describe("GreyAgentProvider", () => {
     expect(JSON.parse(options.body)).toEqual({ strategy_id: "ai-1" });
     expect(readState().brainSummary).toMatchObject({
       aiStrategyStatus: "approved", workflowState: "AI_STRATEGY_APPROVED",
+    });
+  });
+
+  it("approveAIStrategy looks for datasets straight away when the backend allows it", async () => {
+    replyWith(projectCreated);
+    replyWith(aiApprovedFindNext);
+    fetchMock.mockResolvedValueOnce(streamOf(datasetStarted, datasetReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("approve ai"));
+    await waitFor(() => expect(readState().currentStage).toBe("DATASET_DISCOVERY"));
+
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/datasets$/);
+    expect(fetchMock.mock.calls[2][1].method).toBe("POST");
+    const state = readState();
+    expect(state.allowedActions).toEqual(["selectDataset", "requestDatasetAlternative"]);
+    expect(state.brainSummary).toMatchObject({
+      aiStrategyStatus: "approved",
+      datasetPlanId: "plan-1",
+      datasetStatus: "draft",
+      datasetResearchesLeft: 2,
+      workflowState: "DATASET_DISCOVERY",
+    });
+  });
+
+  it("findDatasets retries the search on its own", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(datasetStarted, datasetReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("find datasets"));
+    await waitFor(() => expect(readState().currentStage).toBe("DATASET_DISCOVERY"));
+
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/datasets$/);
+  });
+
+  it("findDatasets shows an error if the stream stops early", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(datasetStarted));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("find datasets"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("error").textContent).toMatch(/connection to Grey was lost during looking for datasets/)
+    );
+  });
+
+  it("requestDatasetAlternative posts the student's preference and streams the new search", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(datasetStarted, datasetReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("own data"));
+    await waitFor(() => expect(readState().lastEventType).toBe("dataset_options_ready"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/datasets\/research$/);
+    expect(JSON.parse(options.body)).toEqual({ preference: "own_data" });
+  });
+
+  it("selectDataset posts the plan id and the choice and finishes at DATASET_SELECTED", async () => {
+    replyWith(projectCreated);
+    replyWith(datasetSelected);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("select alternative"));
+    await waitFor(() => expect(readState().currentStage).toBe("DATASET_SELECTED"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/datasets\/select$/);
+    expect(JSON.parse(options.body)).toEqual({ plan_id: "plan-1", choice: "alternative" });
+    expect(readState().brainSummary).toMatchObject({
+      datasetStatus: "selected", datasetSelected: "Vessel tracks", workflowState: "DATASET_SELECTED",
     });
   });
 });

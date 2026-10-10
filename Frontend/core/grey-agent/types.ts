@@ -56,6 +56,12 @@ export type WorkspaceBrainSummary = {
   /** Grey's verdict, e.g. "traditional_ml" or "rule_based". */
   aiNecessity?: string;
   aiRechecksLeft?: number;
+  /** Dataset discovery (Release 0.8): "running" | "draft" | "selected" | "failed". */
+  datasetStatus?: string;
+  datasetPlanId?: string;
+  datasetResearchesLeft?: number;
+  /** The name of the dataset the student selected. */
+  datasetSelected?: string;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -132,6 +138,9 @@ export const Actions = {
   CHECK_AI_NEED: "checkAINeed",
   RECHECK_AI_STRATEGY: "recheckAIStrategy",
   APPROVE_AI_STRATEGY: "approveAIStrategy",
+  FIND_DATASETS: "findDatasets",
+  REQUEST_DATASET_ALTERNATIVE: "requestDatasetAlternative",
+  SELECT_DATASET: "selectDataset",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

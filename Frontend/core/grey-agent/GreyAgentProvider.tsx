@@ -47,6 +47,9 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
     ai_strategy_status: "aiStrategyStatus",
     ai_strategy_id: "aiStrategyId",
     ai_necessity: "aiNecessity",
+    dataset_status: "datasetStatus",
+    dataset_plan_id: "datasetPlanId",
+    dataset_selected: "datasetSelected",
   } as const;
   const numberKeys = {
     evidence_count: "evidenceCount",
@@ -55,6 +58,7 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
     fyp_adjustments_left: "fypAdjustmentsLeft",
     core_feature_count: "coreFeatureCount",
     ai_rechecks_left: "aiRechecksLeft",
+    dataset_researches_left: "datasetResearchesLeft",
   } as const;
 
   const summary: WorkspaceBrainSummary = {};

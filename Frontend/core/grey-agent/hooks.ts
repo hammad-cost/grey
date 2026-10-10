@@ -52,6 +52,7 @@ const PROBLEM_END_EVENTS = ["problem_options_ready", "problem_extraction_failed"
 const FYP_DESIGN_END_EVENTS = ["fyp_direction_ready", "fyp_design_failed"];
 const DEFINITION_END_EVENTS = ["project_definition_ready", "project_definition_failed"];
 const AI_STRATEGY_END_EVENTS = ["ai_strategy_ready", "ai_strategy_failed"];
+const DATASET_END_EVENTS = ["dataset_options_ready", "dataset_search_failed"];
 
 /**
  * POST to a streaming endpoint (with an optional JSON body) and apply every
@@ -400,14 +401,74 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  /** Approve the AI strategy (a mandatory decision). Release 0.7 ends here. */
+  /**
+   * Approve the AI strategy (a mandatory decision), then — when the backend
+   * says so (ai_strategy_approved allows "findDatasets") — look for datasets
+   * straight away (Release 0.8). Resolves with the final event
+   * (dataset_options_ready or dataset_search_failed, or ai_strategy_approved).
+   */
   const approveAIStrategy = useCallback(
     (strategyId: string) =>
       run(async () => {
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${workspaceId}/ai-strategy/approve`,
+          { method: "POST", body: JSON.stringify({ strategy_id: strategyId }) }
+        );
+        applyEvent(event);
+        if (!event.allowed_actions.includes(Actions.FIND_DATASETS)) return event;
+
+        return runEventStream(
+          `/projects/${workspaceId}/datasets`, DATASET_END_EVENTS, applyEvent, "Looking for datasets"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /**
+   * Search for datasets and recommend two (e.g. "Try again" after
+   * dataset_search_failed). Streams progress; resolves with
+   * dataset_options_ready or dataset_search_failed.
+   */
+  const findDatasets = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/datasets`, DATASET_END_EVENTS, applyEvent, "Looking for datasets"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /**
+   * Ask Grey to search again with a preference: "other_options" or "own_data"
+   * (up to 2 times). Streams progress like findDatasets.
+   */
+  const requestDatasetAlternative = useCallback(
+    (preference: string) =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/datasets/research`,
+          DATASET_END_EVENTS,
+          applyEvent,
+          "Searching again",
+          { preference }
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Select the "primary" or the "alternative" dataset (a mandatory decision). Release 0.8 ends here. */
+  const selectDataset = useCallback(
+    (planId: string, choice: string) =>
+      run(async () => {
         if (!state.workspaceId) throw new Error("No active project.");
         const event = await apiFetch<GreyEvent>(
-          `/projects/${state.workspaceId}/ai-strategy/approve`,
-          { method: "POST", body: JSON.stringify({ strategy_id: strategyId }) }
+          `/projects/${state.workspaceId}/datasets/select`,
+          { method: "POST", body: JSON.stringify({ plan_id: planId, choice }) }
         );
         applyEvent(event);
         return event;
@@ -431,5 +492,8 @@ export function useGreyActions() {
     checkAINeed,
     recheckAIStrategy,
     approveAIStrategy,
+    findDatasets,
+    requestDatasetAlternative,
+    selectDataset,
   };
 }

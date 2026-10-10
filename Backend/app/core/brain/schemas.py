@@ -31,7 +31,8 @@ class WorkflowState(str, Enum):
     SCOPE_APPROVED = "SCOPE_APPROVED"      # Release 0.6 ends here: the student approved the scope
     AI_STRATEGY = "AI_STRATEGY"            # Release 0.7: the student reviews the AI necessity check and strategy
     AI_STRATEGY_APPROVED = "AI_STRATEGY_APPROVED"  # Release 0.7 ends here: the student approved the AI strategy
-    DATASET_DISCOVERY = "DATASET_DISCOVERY"
+    DATASET_DISCOVERY = "DATASET_DISCOVERY"        # Release 0.8: the student reviews the recommended datasets
+    DATASET_SELECTED = "DATASET_SELECTED"          # Release 0.8 ends here: the student selected a dataset
     TECHNOLOGY_PLAN = "TECHNOLOGY_PLAN"
     ARCHITECTURE = "ARCHITECTURE"
     EVALUATION = "EVALUATION"
@@ -606,6 +607,133 @@ class AIStrategyRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Dataset discovery (Release 0.8) ───────────────────────────────────────────
+
+# How many times the student can ask Grey to search again with a preference.
+MAX_DATASET_RESEARCHES = 2
+
+# What Grey writes when a search snippet doesn't say (size, labels, license…).
+NOT_STATED = "Not stated — check the dataset page"
+
+
+class DatasetKind(str, Enum):
+    """Where the data comes from (blueprint §24)."""
+    PUBLIC = "public"                          # a public dataset Grey found online
+    SYNTHETIC = "synthetic"                    # data the student generates
+    STUDENT_COLLECTED = "student_collected"    # data the student collects (surveys, sensors, logs…)
+
+
+class DatasetFit(str, Enum):
+    """Does the dataset actually fit the chosen problem? (blueprint §25)"""
+    GOOD = "good"          # fits the problem as it is
+    PARTIAL = "partial"    # fits only after extra preparation, or with clear limits
+
+
+class DatasetChoice(str, Enum):
+    """Which of the two recommended datasets the student selects."""
+    PRIMARY = "primary"
+    ALTERNATIVE = "alternative"
+
+
+class DatasetPreference(str, Enum):
+    """The controlled ways a student can ask Grey to search again (no free text)."""
+    OTHER_OPTIONS = "other_options"    # "Find other options"
+    OWN_DATA = "own_data"              # "I'd rather create or collect my own data"
+
+
+class DatasetCandidate(BaseModel):
+    """
+    One dataset page the search found. Kept with the run, so Grey can only
+    recommend public datasets it really found (never invented ones).
+    """
+    title: str = Field(min_length=1)
+    url: str = Field(pattern=r"^https?://\S+$")
+    snippet: str = Field(min_length=1)
+    publisher: str | None = None
+    query: str = Field(min_length=1)     # the search that found it (transparency)
+    provider: str = Field(min_length=1)  # which search provider, e.g. "mock"
+
+
+class DatasetOption(BaseModel):
+    """
+    One recommended dataset with the information blueprint §25 asks for.
+    Facts a search snippet doesn't give (size, license…) say NOT_STATED
+    instead of guessing. The rules about links live in dataset_rules.py.
+    """
+    kind: DatasetKind
+    name: str = Field(min_length=1)
+    source: str = Field(min_length=1)               # site or organization; "You" for own data
+    url: str | None = Field(default=None, pattern=r"^https?://\S+$")   # only for public datasets
+    size: str = Field(min_length=1)
+    main_features: list[str] = Field(min_length=1, max_length=8)
+    labels: str = Field(min_length=1)
+    license: str = Field(min_length=1)
+    relevance: str = Field(min_length=1)            # why it fits THIS problem
+    preprocessing: list[str] = Field(min_length=1, max_length=6)
+    limitations: list[str] = Field(min_length=1, max_length=5)
+    fit: DatasetFit
+    how_to_get: str | None = None                   # how the student creates or collects own data
+
+
+class DatasetPlan(BaseModel):
+    """Grey's recommendation: one primary dataset and one alternative (blueprint §24)."""
+    purpose: str = Field(min_length=1)    # what the data is for in this project (train, test, demo…)
+    primary: DatasetOption
+    alternative: DatasetOption
+
+
+class DatasetPlanStatus(str, Enum):
+    DRAFT = "draft"          # the student is reviewing it (and may ask Grey to search again)
+    SELECTED = "selected"    # the student selected one of the two datasets
+
+
+class StoredDatasetPlan(BaseModel):
+    """The dataset recommendation as read back from the Project Brain."""
+    id: str
+    workspace_id: str
+    strategy_id: str                          # the approved AI strategy it was made for
+    run_id: str
+    status: DatasetPlanStatus
+    plan: DatasetPlan
+    researches_used: int = 0
+    preference: DatasetPreference | None = None   # what the student asked for in the latest re-search
+    selected: DatasetChoice | None = None         # set when the student selects a dataset
+    created_at: datetime
+    updated_at: datetime
+    selected_at: datetime | None = None
+
+    @property
+    def selected_option(self) -> DatasetOption | None:
+        if self.selected is None:
+            return None
+        return self.plan.primary if self.selected == DatasetChoice.PRIMARY else self.plan.alternative
+
+
+class DatasetRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class DatasetRun(BaseModel):
+    """One dataset search (the first one, or a re-search). The pages it found are read separately."""
+    id: str
+    workspace_id: str
+    strategy_id: str
+    preference: DatasetPreference | None = None   # None for the first search
+    status: DatasetRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    searches_used: int = 0
+    candidates_found: int = 0
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -648,6 +776,11 @@ class WorkspaceBrainSnapshot(BaseModel):
     # strategy, and the latest attempt.
     ai_strategy: StoredAIStrategy | None = None
     ai_strategy_run: AIStrategyRun | None = None
+
+    # Dataset discovery (Release 0.8): the draft or selected recommendation,
+    # and the latest search.
+    dataset_plan: StoredDatasetPlan | None = None
+    dataset_run: DatasetRun | None = None
 
     created_at: datetime
     updated_at: datetime

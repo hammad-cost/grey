@@ -4,11 +4,35 @@
 
 | | |
 |---|---|
-| Current release | **0.7 — AI necessity check and AI strategy: COMPLETE** (all 7 steps, local commits `a1a081d` … Step 7 docs commit). **Not pushed, not tagged** — the student reviews first. Do NOT start 0.8 (dataset discovery) unasked. |
-| Current step | Waiting for the student's review of Release 0.7 (and 0.5 + 0.6, also unreviewed in the browser). |
+| Current release | **0.8 — Dataset discovery: APPROVED 2026-10-10, building in one continuous run** (student: "do what look best for you" → all 5 recommendations accepted). 0.7 is complete (local commits `a1a081d` … `381c80e`), not pushed. |
+| Current step | 0.8 Step 1 (Brain storage). |
 | Last completed step | 0.7 Step 7 — docs + full verification: 844 backend passing + 11 skipped (live), 154 frontend, type-check clean, build OK; fake-mode end-to-end run through a real server (… → approve scope → AI check → "ready-made model" re-check → repeat refused 409 → "without AI" re-check → 3rd refused 409 → wrong id 409 → approve → late re-check 409); live Groq run of `plan_ai_strategy` (first check + "without AI" re-check) passed with no rejected replies. |
-| Next action | Student reviews. Optional next: (a) browser walk-through of 0.3–0.7, (b) a full live journey (real search + Groq, ~15 searches), (c) "push to GitHub", (d) resume 0.4.1 Step 2 (evidence quality), (e) plan 0.8 (dataset discovery, blueprint §24) — only when asked. |
+| Next action | Student approves (or changes) the 0.8 plan → build Steps 1–8. Other open options: browser walk-through of 0.3–0.7, full live journey, "push to GitHub", resume 0.4.1 Step 2. |
 | Last commit | Release 0.7 Step 7 docs commit on `main` (run `git log --oneline -10`). Unpushed commits since `origin/main`: 0.3+0.4, 0.4 Step 7, 0.4.1 Step 1, 0.5 Steps 1–7, 0.6 Steps 1–7, 0.7 Steps 1–7. **Ask before pushing.** |
+
+## Release 0.8 plan — Dataset discovery (approved 2026-10-10; all recommendations accepted)
+
+Scope: blueprint Step 15 (§24 Dataset Discovery, §25 Dataset Information). Blueprint skill name `find_datasets`; frontend action `selectDataset`; backend blueprint lists "consequential dataset selection" as a human approval point.
+Boundary: `AI_STRATEGY_APPROVED → (search + choose) → DATASET_DISCOVERY (review: swap / ≤2 re-searches) → DATASET_APPROVED` (new stage).
+Not in 0.8: pretrained models / APIs (§26, that's 0.9), stack, hardware, architecture, evaluation, feasibility, proposal; reading full web pages; dataset-site APIs (Kaggle / Hugging Face metadata APIs).
+
+| Step | What |
+|---|---|
+| 1 | Brain: `dataset_run` (each search: preference, status, searches used, provider/model/prompt version, error), `dataset_plan` (one per project: primary + alternative as JSON, status `draft` / `approved`, `researches_used`); stage `DATASET_APPROVED`; `dataset_rules.py` (a found dataset must link to a page the search returned; synthetic / student-collected data has no link but must say how it will be made; primary ≠ alternative; re-search rules); repository + snapshot fields |
+| 2 | Dataset search (plain code, no AI): targeted searches built from the approved problem, AI task type, scope core features and industry (4–6 searches, cap `DATASET_MAX_SEARCHES=6`), aimed at dataset sites (Kaggle, Hugging Face, UCI, Zenodo, data portals, GitHub, Papers with Code); drops generic pages (home / about / search / metrics pages, URLs without a dataset path) — fixes known issue #9 for this step; reuses `SearchGateway` and the site lists in `sources.py`; mock search answers dataset queries in fake mode |
+| 3 | Skill `find_datasets` (profile `structured_reasoning`, via registry + `LLMGateway`): picks a **primary + alternative** only from the found pages (or synthetic / student-collected data when nothing fits), fills the §25 fields (name, source, size, main features, labels, license, relevance, preprocessing, limitations) + a fit verdict; unknown facts must say "not stated — check the page" instead of guessing; plain-code checks (link must be a found page, no invented sizes / licenses, consistency, length); one retry; prompt `find_datasets.v1`; fake answers |
+| 4 | `dataset_discovery` LangGraph workflow (search → choose → `dataset_review` interrupt: swap ↺ / re-search ↺ / approve → END), runner (restart-safe like 0.6/0.7), events, view; `ai_strategy_approved` allows `findDatasets` |
+| 5 | API: `POST /projects/{id}/datasets` (stream), `POST /datasets/research` (stream, `{preference}`), `POST /datasets/swap`, `POST /datasets/approve`, `GET /datasets`; API version 0.8.0 |
+| 6 | Frontend adapter: `findDatasets` (retry), `researchDatasets(preference)`, `swapDatasets`, `selectDataset(planId)` (approval, blueprint name); auto-start after `approveAIStrategy`; `brainSummary` gains dataset fields |
+| 7 | UI: `DatasetCard` (live checklist; failure + Try again; primary and alternative with all §25 fields and the source link; Swap; allowed re-search buttons with "N of 2 left"; **Use this dataset** with confirm), `ApprovedDatasetCard`; `datasets.ts` |
+| 8 | Docs + full verification + fake-mode end-to-end run + one live run (real search + Groq, about 6 search credits) |
+
+Decisions (the student accepted Claude's recommendations: "do what look best for you"):
+1. **Real search** (recommended) — Grey only recommends datasets it actually found online, never invented ones. Fake mode keeps working with sample results.
+2. **No-AI projects** (`rule_based`, `optimization`, `not_required`): still run, framed as "data to build, test and demo the system"; synthetic or student-collected data may be the primary choice. (Alternative: skip straight past datasets.)
+3. **Student control:** swap primary ↔ alternative (unlimited) + at most **2** re-searches with a fixed preference: "Find other options" / "I'd rather create or collect my own data". No free-text requests (same spirit as 0.5–0.7).
+4. **New stage `DATASET_APPROVED`** ends 0.8 (review happens at the existing `DATASET_DISCOVERY`).
+5. **Snippets only**: size / license / labels are often not in search snippets, so Grey says "not stated — check the page". Reading the actual dataset pages or using Kaggle / Hugging Face APIs would give better facts but adds a tool (and maybe API keys) — suggested for later.
 
 ## Release 0.7 plan — AI necessity check and AI strategy (2026-10-10; built in one continuous run at the student's request: "do 0.7 in one shot … and also test that in the end")
 

@@ -15,6 +15,8 @@ project_definition     — the problem definition and proposed solution, one per
 scope_item             — one row per feature in the scope (core / optional / out of scope).
 ai_strategy_run — one row per AI necessity check or re-check (Release 0.7).
 ai_strategy     — the AI necessity verdict and AI / ML strategy, one per project.
+dataset_run  — one row per dataset search or re-search, with the pages it found (Release 0.8).
+dataset_plan — the recommended primary and alternative datasets, one per project.
 
 Together they are the authoritative state of a student's FYP journey.
 Chat history and LangGraph runtime state are NOT stored here —
@@ -428,3 +430,57 @@ class AIStrategyRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DatasetRunRecord(Base):
+    """One dataset search: the first one, or a re-search the student asked for (Release 0.8)."""
+
+    __tablename__ = "dataset_run"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    strategy_id: Mapped[str] = mapped_column(String, ForeignKey("ai_strategy.id"))
+    preference: Mapped[str | None] = mapped_column(String, nullable=True)   # DatasetPreference value
+
+    status: Mapped[str] = mapped_column(String)                     # DatasetRunStatus value
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Filled in when the run completes: what the search found, and which LLM chose
+    searches_used: Mapped[int] = mapped_column(Integer, default=0)
+    candidates: Mapped[list] = mapped_column(JSON, default=list)    # DatasetCandidate list
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Filled in when the run fails
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class DatasetPlanRecord(Base):
+    """
+    The recommended primary and alternative datasets (Release 0.8). One per
+    project; a re-search replaces the recommendation (each attempt stays in dataset_run).
+    """
+
+    __tablename__ = "dataset_plan"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), unique=True, index=True
+    )
+    strategy_id: Mapped[str] = mapped_column(String, ForeignKey("ai_strategy.id"))
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("dataset_run.id"))   # the run that wrote it
+    status: Mapped[str] = mapped_column(String)                     # DatasetPlanStatus value
+
+    plan: Mapped[dict] = mapped_column(JSON)                        # DatasetPlan, always read as a whole
+
+    researches_used: Mapped[int] = mapped_column(Integer, default=0)
+    preference: Mapped[str | None] = mapped_column(String, nullable=True)   # the latest re-search's preference
+    selected: Mapped[str | None] = mapped_column(String, nullable=True)     # DatasetChoice value
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

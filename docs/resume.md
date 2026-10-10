@@ -4,11 +4,11 @@
 
 | | |
 |---|---|
-| Current release | **0.8 — Dataset discovery: COMPLETE** (all 8 steps, local commits `d8e6d8a` … Step 8 docs commit). **Not pushed, not tagged** — the student reviews first. Do NOT start 0.9 (pretrained models and APIs, blueprint §26) unasked. |
+| Current release | **0.8 — Dataset discovery: COMPLETE** (all 8 steps, local commits `d8e6d8a` … Step 8 docs commit). **Pushed to GitHub 2026-10-11** (`origin/main` = `990a399`); not tagged. Do NOT start 0.9 (pretrained models and APIs, blueprint §26) unasked. |
 | Current step | Waiting for the student's review of Release 0.8 (and 0.5–0.7, also unreviewed in the browser). |
 | Last completed step | 0.8 Step 8 — docs + full verification: 980 backend passing + 12 skipped (live), 182 frontend, type-check clean, build OK; fake-mode end-to-end run through a real server (… → approve AI strategy → dataset search → 2nd first-search 409 → "own data" re-search (0 searches) → repeat 409 → "other options" re-search (nothing shown before) → 3rd 409 → unknown preference 422 → wrong plan id 409 → select alternative → late re-search / 2nd selection 409); live run of `find_datasets` (real search + Groq; first search + "own data" re-search) passed with no rejected replies — findings in current-state.md known issue 12. |
-| Next action | Student reviews. Optional next: (a) browser walk-through of 0.3–0.8, (b) a full live journey, (c) "push to GitHub", (d) improve dataset search wording (known issue 12) or resume 0.4.1 Step 2, (e) plan 0.9 (pretrained models and APIs) — only when asked. |
-| Last commit | Release 0.8 Step 8 docs commit on `main` (run `git log --oneline -10`). Unpushed commits since `origin/main`: 0.3+0.4, 0.4 Step 7, 0.4.1 Step 1, 0.5–0.7 Steps, 0.8 Steps 1–8. **Ask before pushing.** |
+| Next action | Student reviews. Optional next: (a) browser walk-through of 0.3–0.8, (b) a full live journey (d) improve dataset search wording (known issue 12) or resume 0.4.1 Step 2, (e) plan 0.9 (pretrained models and APIs) — only when asked. |
+| Last commit | Release 0.8 Step 8 docs commit on `main` (run `git log --oneline -10`). Everything up to 0.8 Step 8 is pushed (`origin/main` = `990a399`). **Ask before pushing future work.** |
 
 ## Release 0.8 plan — Dataset discovery (approved 2026-10-10; built in one continuous run; the student accepted every recommendation: "do what look best for you")
 

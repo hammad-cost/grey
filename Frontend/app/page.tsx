@@ -21,7 +21,9 @@
  *   DATASET_DISCOVERY  → DatasetRecommendationCard (review: search again, select one of two datasets)
  *   DATASET_SELECTED   → SelectedDatasetCard + ModelRecommendationCard (Grey looking for models)
  *   MODEL_SELECTION    → ModelRecommendationCard (review: look for other models, approve)
- *   MODELS_APPROVED    → ApprovedModelsCard (Release 0.9 ends here)
+ *   MODELS_APPROVED    → ApprovedModelsCard + TechnologyPlanCard (Grey planning the technology)
+ *   TECHNOLOGY_PLAN    → TechnologyPlanCard (review: make it simpler, approve)
+ *   TECHNOLOGY_APPROVED → ApprovedTechnologyCard (Release 0.10 ends here)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
@@ -29,6 +31,7 @@ import { AIStrategyCard } from "@/domains/fyp/components/AIStrategyCard";
 import { ApprovedAIStrategyCard } from "@/domains/fyp/components/ApprovedAIStrategyCard";
 import { ApprovedFYPCard } from "@/domains/fyp/components/ApprovedFYPCard";
 import { ApprovedScopeCard } from "@/domains/fyp/components/ApprovedScopeCard";
+import { ApprovedTechnologyCard } from "@/domains/fyp/components/ApprovedTechnologyCard";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
 import { DatasetRecommendationCard } from "@/domains/fyp/components/DatasetRecommendationCard";
 import { FunctionalAreaCard } from "@/domains/fyp/components/FunctionalAreaCard";
@@ -42,12 +45,13 @@ import { ProjectDefinitionCard } from "@/domains/fyp/components/ProjectDefinitio
 import { ResearchProgressCard } from "@/domains/fyp/components/ResearchProgressCard";
 import { SelectedDatasetCard } from "@/domains/fyp/components/SelectedDatasetCard";
 import { SelectedProblemCard } from "@/domains/fyp/components/SelectedProblemCard";
+import { TechnologyPlanCard } from "@/domains/fyp/components/TechnologyPlanCard";
 
 // Stages whose cards show their own progress, so the generic spinner is hidden.
 const STAGES_WITH_OWN_PROGRESS = [
   "EVIDENCE_RESEARCH", "PROBLEM_OPTIONS", "PROBLEM_SELECTED", "AREA_CLASSIFICATION", "FYP_DESIGN",
   "APPROVED_FYP", "SCOPE", "SCOPE_APPROVED", "AI_STRATEGY", "AI_STRATEGY_APPROVED", "DATASET_DISCOVERY",
-  "DATASET_SELECTED", "MODEL_SELECTION",
+  "DATASET_SELECTED", "MODEL_SELECTION", "MODELS_APPROVED", "TECHNOLOGY_PLAN",
 ];
 
 export default function Home() {
@@ -146,6 +150,12 @@ export default function Home() {
         <div className="flex flex-col gap-4 mt-4">
           <ModelRecommendationCard />
           <ApprovedModelsCard />
+        </div>
+
+        {/* ── Technology stack and hardware (Release 0.10) ────────────────── */}
+        <div className="flex flex-col gap-4 mt-4">
+          <TechnologyPlanCard />
+          <ApprovedTechnologyCard />
         </div>
 
       </div>

@@ -221,6 +221,43 @@ const scopeApproved = definitionEvent("scope_approved", {
   brain_patch: { workflow_state: "SCOPE_APPROVED", project_definition_status: "approved" },
 });
 
+const scopeApprovedCheckNext = { ...scopeApproved, allowed_actions: ["checkAINeed"] };
+
+/** An AI strategy event (Release 0.7). */
+function aiEvent(type: string, extra: Partial<GreyEvent> = {}): GreyEvent {
+  return {
+    type,
+    workspace_id: "w_123",
+    domain: "fyp",
+    workflow: "ai_strategy",
+    stage: "SCOPE_APPROVED",
+    status: "running",
+    data: { label: `${type} label`, completed_steps: 1, total_steps: 3 },
+    brain_patch: {},
+    allowed_actions: [],
+    ...extra,
+  };
+}
+
+const aiStarted = aiEvent("ai_strategy_started", { brain_patch: { ai_strategy_status: "running" } });
+const aiReady = aiEvent("ai_strategy_ready", {
+  stage: "AI_STRATEGY",
+  status: "awaiting_user",
+  brain_patch: {
+    workflow_state: "AI_STRATEGY",
+    ai_strategy_id: "ai-1",
+    ai_strategy_status: "draft",
+    ai_necessity: "traditional_ml",
+    ai_rechecks_left: 2,
+  },
+  allowed_actions: ["approveAIStrategy", "recheckAIStrategy"],
+});
+const aiApproved = aiEvent("ai_strategy_approved", {
+  stage: "AI_STRATEGY_APPROVED",
+  status: "complete",
+  brain_patch: { workflow_state: "AI_STRATEGY_APPROVED", ai_strategy_status: "approved" },
+});
+
 /** A streamed reply with these events, one JSON per line. */
 function streamOf(...events: GreyEvent[]) {
   return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
@@ -233,6 +270,7 @@ function Probe() {
   const {
     startProject, selectIndustry, selectBranch, startResearch, extractProblems, selectProblem,
     designFYP, adjustFYPDirection, approveFYPDirection, defineProject, moveScopeItem, approveScope,
+    checkAINeed, recheckAIStrategy, approveAIStrategy,
   } = useGreyActions();
   return (
     <>
@@ -249,6 +287,9 @@ function Probe() {
       <button onClick={() => defineProject().catch(() => {})}>define project</button>
       <button onClick={() => moveScopeItem("s-4", "core").catch(() => {})}>move to core</button>
       <button onClick={() => approveScope("def-1").catch(() => {})}>approve scope</button>
+      <button onClick={() => checkAINeed().catch(() => {})}>check ai</button>
+      <button onClick={() => recheckAIStrategy("without_ai").catch(() => {})}>recheck without ai</button>
+      <button onClick={() => approveAIStrategy("ai-1").catch(() => {})}>approve ai</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -734,6 +775,91 @@ describe("GreyAgentProvider", () => {
     expect(JSON.parse(options.body)).toEqual({ definition_id: "def-1" });
     expect(readState().brainSummary).toMatchObject({
       projectDefinitionStatus: "approved", workflowState: "SCOPE_APPROVED",
+    });
+  });
+
+  it("approveScope checks the AI need straight away when the backend allows it", async () => {
+    replyWith(projectCreated);
+    replyWith(scopeApprovedCheckNext);
+    fetchMock.mockResolvedValueOnce(streamOf(aiStarted, aiReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("approve scope"));
+    await waitFor(() => expect(readState().currentStage).toBe("AI_STRATEGY"));
+
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/ai-strategy$/);
+    expect(fetchMock.mock.calls[2][1].method).toBe("POST");
+    const state = readState();
+    expect(state.allowedActions).toEqual(["approveAIStrategy", "recheckAIStrategy"]);
+    expect(state.brainSummary).toMatchObject({
+      projectDefinitionStatus: "approved",
+      aiStrategyId: "ai-1",
+      aiStrategyStatus: "draft",
+      aiNecessity: "traditional_ml",
+      aiRechecksLeft: 2,
+      workflowState: "AI_STRATEGY",
+    });
+  });
+
+  it("checkAINeed retries the check on its own", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(aiStarted, aiReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("check ai"));
+    await waitFor(() => expect(readState().currentStage).toBe("AI_STRATEGY"));
+
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/ai-strategy$/);
+  });
+
+  it("checkAINeed shows an error if the stream stops early", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(aiStarted));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("check ai"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("error").textContent).toMatch(/connection to Grey was lost during checking the ai need/)
+    );
+  });
+
+  it("recheckAIStrategy posts the student's preference and streams the re-check", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(aiStarted, aiReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("recheck without ai"));
+    await waitFor(() => expect(readState().lastEventType).toBe("ai_strategy_ready"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/ai-strategy\/recheck$/);
+    expect(JSON.parse(options.body)).toEqual({ preference: "without_ai" });
+  });
+
+  it("approveAIStrategy posts the strategy id and finishes at AI_STRATEGY_APPROVED", async () => {
+    replyWith(projectCreated);
+    replyWith(aiApproved);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("approve ai"));
+    await waitFor(() => expect(readState().currentStage).toBe("AI_STRATEGY_APPROVED"));
+
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toMatch(/\/projects\/w_123\/ai-strategy\/approve$/);
+    expect(JSON.parse(options.body)).toEqual({ strategy_id: "ai-1" });
+    expect(readState().brainSummary).toMatchObject({
+      aiStrategyStatus: "approved", workflowState: "AI_STRATEGY_APPROVED",
     });
   });
 });

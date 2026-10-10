@@ -50,6 +50,12 @@ export type WorkspaceBrainSummary = {
   projectDefinitionStatus?: string;
   projectDefinitionId?: string;
   coreFeatureCount?: number;
+  /** AI necessity check and strategy (Release 0.7): "running" | "draft" | "approved" | "failed". */
+  aiStrategyStatus?: string;
+  aiStrategyId?: string;
+  /** Grey's verdict, e.g. "traditional_ml" or "rule_based". */
+  aiNecessity?: string;
+  aiRechecksLeft?: number;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -123,6 +129,9 @@ export const Actions = {
   DEFINE_PROJECT: "defineProject",
   MODIFY_SCOPE: "modifyScope",
   APPROVE_SCOPE: "approveScope",
+  CHECK_AI_NEED: "checkAINeed",
+  RECHECK_AI_STRATEGY: "recheckAIStrategy",
+  APPROVE_AI_STRATEGY: "approveAIStrategy",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

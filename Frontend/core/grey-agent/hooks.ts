@@ -51,6 +51,7 @@ const RESEARCH_END_EVENTS = ["research_completed", "research_failed"];
 const PROBLEM_END_EVENTS = ["problem_options_ready", "problem_extraction_failed"];
 const FYP_DESIGN_END_EVENTS = ["fyp_direction_ready", "fyp_design_failed"];
 const DEFINITION_END_EVENTS = ["project_definition_ready", "project_definition_failed"];
+const AI_STRATEGY_END_EVENTS = ["ai_strategy_ready", "ai_strategy_failed"];
 
 /**
  * POST to a streaming endpoint (with an optional JSON body) and apply every
@@ -339,14 +340,74 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  /** Approve the project scope (a mandatory decision). Release 0.6 ends here. */
+  /**
+   * Approve the project scope (a mandatory decision), then — when the backend
+   * says so (scope_approved allows "checkAINeed") — check whether the project
+   * needs AI straight away (Release 0.7). Resolves with the final event
+   * (ai_strategy_ready or ai_strategy_failed, or scope_approved).
+   */
   const approveScope = useCallback(
     (definitionId: string) =>
       run(async () => {
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${workspaceId}/scope/approve`,
+          { method: "POST", body: JSON.stringify({ definition_id: definitionId }) }
+        );
+        applyEvent(event);
+        if (!event.allowed_actions.includes(Actions.CHECK_AI_NEED)) return event;
+
+        return runEventStream(
+          `/projects/${workspaceId}/ai-strategy`, AI_STRATEGY_END_EVENTS, applyEvent, "Checking the AI need"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /**
+   * Check whether the project needs AI and plan the AI strategy (e.g. "Try
+   * again" after ai_strategy_failed). Streams progress; resolves with
+   * ai_strategy_ready or ai_strategy_failed.
+   */
+  const checkAINeed = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/ai-strategy`, AI_STRATEGY_END_EVENTS, applyEvent, "Checking the AI need"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /**
+   * Ask Grey to check again with a preference: "without_ai" or "existing_model"
+   * (up to 2 times). Streams progress like checkAINeed.
+   */
+  const recheckAIStrategy = useCallback(
+    (preference: string) =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/ai-strategy/recheck`,
+          AI_STRATEGY_END_EVENTS,
+          applyEvent,
+          "Checking again",
+          { preference }
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Approve the AI strategy (a mandatory decision). Release 0.7 ends here. */
+  const approveAIStrategy = useCallback(
+    (strategyId: string) =>
+      run(async () => {
         if (!state.workspaceId) throw new Error("No active project.");
         const event = await apiFetch<GreyEvent>(
-          `/projects/${state.workspaceId}/scope/approve`,
-          { method: "POST", body: JSON.stringify({ definition_id: definitionId }) }
+          `/projects/${state.workspaceId}/ai-strategy/approve`,
+          { method: "POST", body: JSON.stringify({ strategy_id: strategyId }) }
         );
         applyEvent(event);
         return event;
@@ -367,5 +428,8 @@ export function useGreyActions() {
     defineProject,
     moveScopeItem,
     approveScope,
+    checkAINeed,
+    recheckAIStrategy,
+    approveAIStrategy,
   };
 }

@@ -48,6 +48,8 @@ class Settings(BaseSettings):
 
     # Most searches one research run may make (free search plans are small).
     research_max_searches: int = 15
+    # Most searches one dataset search may make (Release 0.8).
+    dataset_max_searches: int = 6
 
     # Limits for every real search (see app/core/tools/search_gateway.py).
     search_timeout_seconds: float = 20.0

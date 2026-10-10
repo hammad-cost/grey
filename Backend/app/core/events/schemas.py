@@ -87,9 +87,15 @@ class EventType(str, Enum):
     TECHNOLOGY_PLAN_FAILED = "technology_plan_failed"
     TECHNOLOGY_APPROVED = "technology_approved"
 
+    # Release 0.11 — system architecture and evaluation plan. Safe activity only, never reasoning.
+    ARCHITECTURE_STARTED = "architecture_started"
+    ARCHITECTURE_PROGRESS = "architecture_progress"
+    ARCHITECTURE_READY = "architecture_ready"              # name from the frontend blueprint
+    ARCHITECTURE_FAILED = "architecture_failed"
+    TECHNICAL_PLAN_APPROVED = "technical_plan_approved"
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
-    ARCHITECTURE_READY = "architecture_ready"
     FEASIBILITY_READY = "feasibility_ready"
     SUPERVISOR_READINESS_READY = "supervisor_readiness_ready"
     PROPOSAL_READY = "proposal_ready"
@@ -141,6 +147,8 @@ class AllowedAction(str, Enum):
     PLAN_TECHNOLOGY = "planTechnology"             # plan the stack and hardware (or retry)
     REPLAN_TECHNOLOGY = "replanTechnology"         # make it simpler / cheaper (up to 2 times)
     APPROVE_TECHNOLOGY = "approveTechnology"
+    DESIGN_ARCHITECTURE = "designArchitecture"     # design the architecture and evaluation plan (or retry)
+    REDESIGN_ARCHITECTURE = "redesignArchitecture" # make it simpler (up to 2 times)
     APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"
     GO_BACK = "goBack"
     ASK_GREY = "askGrey"

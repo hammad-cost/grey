@@ -141,7 +141,7 @@ class TechnologyEventBuilder:
 
 
 def technology_approved_event(workspace_id: str, view: TechnologyView) -> GreyEvent:
-    """The student approved the technology plan. Release 0.10 ends here."""
+    """The student approved the technology plan. Next, Grey designs the architecture (Release 0.11)."""
     return build_event(
         type=EventType.TECHNOLOGY_APPROVED,
         workspace_id=workspace_id,
@@ -150,5 +150,5 @@ def technology_approved_event(workspace_id: str, view: TechnologyView) -> GreyEv
         status=EventStatus.COMPLETE,
         data={"technology": view.model_dump(mode="json")},
         brain_patch={"workflow_state": WorkflowState.TECHNOLOGY_APPROVED.value, **_view_patch(view)},
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.DESIGN_ARCHITECTURE],
     )

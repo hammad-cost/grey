@@ -1,12 +1,28 @@
 # Grey — Current State
 
-**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · 0.5 From problem to FYP (local, not yet run live) · 0.6 Project definition and scope (local, not yet run live) · 0.7 AI necessity check and AI strategy (local, skill live-tested with Groq) · 0.8 Dataset discovery (pushed; live-tested) · **0.9 Pretrained models and APIs (complete, local commits, not pushed; skill live-tested with real search + Groq)**
+**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · 0.5 From problem to FYP (local, not yet run live) · 0.6 Project definition and scope (local, not yet run live) · 0.7 AI necessity check and AI strategy (local, skill live-tested with Groq) · 0.8 Dataset discovery (pushed; live-tested) · 0.9 Pretrained models and APIs (local; live-tested) · **0.10 Technology stack and hardware (complete, local commits, not pushed; skill live-tested with Groq)**
 **Last updated:** 2026-10-11
-**Scope:** FYP Companion, from "Start my FYP" to an approved model plan (stage `MODELS_APPROVED`)
+**Scope:** FYP Companion, from "Start my FYP" to an approved technology plan (stage `TECHNOLOGY_APPROVED`)
 
 This file records exactly what is implemented today — no more, no less.
 For the planned product, see `docs/specs/`. For how the pieces fit together, see `docs/architecture.md`.
 For the quick recovery checkpoint (current step, next action), see `docs/resume.md`.
+
+---
+
+## 0g. Release 0.10 (Technology stack and hardware) — what it added
+
+Product blueprint Steps 17–18 (§27–29). Grey makes decisions, not option lists: one technology per needed area, each with a reason that fits this project, plus the hardware the project needs. Built in the autonomous run (2026-10-11).
+
+| Step | Built | Location |
+|---|---|---|
+| 1 | Project Brain: `technology_run`, `technology_plan` (summary; 2–6 stack choices — area, choice, reason; 1–5 hardware items — kind, name, purpose, essential, cost, alternative; status; `replans_used`; preference). Stage `TECHNOLOGY_APPROVED` (review at the existing `TECHNOLOGY_PLAN`). Rules (`technology_rules.py`): one choice per area; AI / ML required when the project uses AI, AI / ML and training forbidden when it doesn't; a frontend or a backend; a high-cost hardware item names a cheaper alternative; at most **2** "simpler" re-plans. | `Backend/app/core/brain/` |
+| 2 | Skill **`plan_technology`** (`structured_reasoning`, no search). Checks: unknown areas / hardware kinds / costs, **option lists in a choice ("React or Vue")**, counts, length, links, the rules; one retry. The re-plan sees the previous plan and is asked for fewer, free, lightweight tools. Prompt `plan_technology.v1`; fake answers. | `Backend/app/domains/fyp/skills/plan_technology/`, `app/domains/fyp/prompts/plan_technology.py` |
+| 3 | **`technology_plan`** workflow: `plan_technology` → `technology_review` (interrupt: approve → END, replan → back). Events `technology_plan_started → technology_plan_progress ×3 → technology_plan_ready` (or `technology_plan_failed`), `technology_approved`; restart-safe. `models_approved` now allows `planTechnology`. | `Backend/app/domains/fyp/workflows/technology_plan/` |
+| 4 | API: `POST /projects/{id}/technology` (stream), `POST /projects/{id}/technology/replan` (stream), `POST /projects/{id}/technology/approve`, `GET /projects/{id}/technology`. API version 0.10.0. | `Backend/app/api/technology.py` |
+| 5 | Adapter: `approveModels()` continues into the technology plan; `planTechnology()`, `replanTechnology(preference)`, `approveTechnology(planId)`; `brainSummary` gains `technologyStatus`, `technologyPlanId`, `technologyReplansLeft`. | `Frontend/core/grey-agent/` |
+| 6 | UI: `TechnologyPlanCard` (checklist; Try again; summary; one row per stack decision with its reason; hardware with essential / nice to have, cost and alternative; **Make it simpler / cheaper** with N of 2 left; **Approve technology plan** with confirm), `ApprovedTechnologyCard`; `technology.ts`. | `Frontend/domains/fyp/` |
+| 7 | Docs + verification; fake e2e through a real server; live Groq run (first plan + "simpler" re-plan), no rejected replies: React / FastAPI / PostgreSQL / PyTorch / Colab, then Flask + SQLite + local. | `docs/`, `Backend/tests/live/test_technology_live.py` |
 
 ---
 
@@ -166,10 +182,11 @@ The LLM runs in **fake mode by default** (no key, no cost); with `LLM_MODE=live`
 16. Review **Pick the data you'll build on**: what the data is for, then **Grey's main pick** and an **Alternative** side by side — each with a link to the dataset page Grey found (or, for data you generate / collect, how to get it), where it's from, how well it fits, why it fits, size, labels, license, main features, the preparation it needs and its limitations. Facts the search didn't show say "Not stated — check the dataset page".
 17. Optionally ask Grey to search again, up to 2 times: **Find other options** (never the same datasets twice) or **I'd rather create or collect my own data** (only the ones that make sense are shown).
 18. **Use this dataset** on either one (with a confirm step) → see **Your selected dataset** (stage `DATASET_SELECTED`) — and, without clicking again, watch Grey check what already exists.
-19. Review **What already exists for your project**: Grey's advice and up to 3 ready-made models, AI services or code repositories (each linked to the page Grey found) with what to do with it — use it directly, fine-tune it, use it as a benchmark, or avoid it — and why. A project without AI simply sees **No model needed**. Optionally **Look for other models** (up to 2 times), then **Approve model plan** (with a confirm step) → **Your approved model plan** (stage `MODELS_APPROVED`).
+19. Review **What already exists for your project**: Grey's advice and up to 3 ready-made models, AI services or code repositories (each linked to the page Grey found) with what to do with it — use it directly, fine-tune it, use it as a benchmark, or avoid it — and why. A project without AI simply sees **No model needed**. Optionally **Look for other models** (up to 2 times), then **Approve model plan** (with a confirm step) → **Your approved model plan** (stage `MODELS_APPROVED`) — and, without clicking again, watch Grey plan the technology.
+20. Review **Your technology plan**: one decision per needed area (frontend, backend, database, AI / ML, training, deployment) with why it suits the project, and the hardware (essential or nice to have, cost, a cheaper alternative). Optionally **Make it simpler / cheaper** (up to 2 times), then **Approve technology plan** (with a confirm step) → **Your approved technology plan** (stage `TECHNOLOGY_APPROVED`).
 
 On any failure: a calm message and **Try again** (or **Research again** when the evidence was too thin). A failed redesign keeps the current design and doesn't use up a redesign.
-The journey stops at the approved model plan. Technology, hardware, architecture, evaluation, feasibility and the proposal do not exist yet.
+The journey stops at the approved technology plan. architecture, evaluation, feasibility and the proposal do not exist yet.
 
 ---
 
@@ -180,8 +197,8 @@ The journey stops at the approved model plan. Technology, hardware, architecture
 | Area | What exists | Location |
 |---|---|---|
 | Configuration | `APP_ENV`, `DATABASE_URL`, `CORS_ORIGINS`, `SEARCH_PROVIDERS`, `SERPAPI_API_KEY`, `TAVILY_API_KEY`, `RESEARCH_MAX_SEARCHES`, `DATASET_MAX_SEARCHES`, `SEARCH_TIMEOUT_SECONDS`, `SEARCH_MAX_RETRIES`, `SEARCH_COOLDOWN_SECONDS`, `SEARCH_QUOTA_COOLDOWN_SECONDS`, `MOCK_SEARCH_DELAY_MS`, `LLM_MODE`, `GROQ_API_KEY`, `GROQ_BASE_URL`, `LLM_PROFILE_*` overrides, `LLM_TIMEOUT_SECONDS`, `LLM_TOTAL_DEADLINE_SECONDS`, `LLM_MAX_RETRIES`, `LLM_COOLDOWN_SECONDS`, `LLM_QUOTA_COOLDOWN_SECONDS` | `app/core/config/settings.py`, `.env.example` |
-| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5); `project_definition_run`, `project_definition`, `scope_item` (0.6); `ai_strategy_run`, `ai_strategy` (0.7); `dataset_run`, `dataset_plan` (0.8); `model_run`, `model_plan` (0.9) | `app/core/brain/models.py` |
-| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval, project definition, scope moves, scope approval, AI checks, re-checks, AI strategy approval, dataset searches with their pages, re-searches, dataset selection, model searches, model plan approval); scope rules in `scope_rules.py`, AI strategy rules in `ai_strategy_rules.py`, dataset rules in `dataset_rules.py`, model rules in `model_rules.py`; read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
+| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5); `project_definition_run`, `project_definition`, `scope_item` (0.6); `ai_strategy_run`, `ai_strategy` (0.7); `dataset_run`, `dataset_plan` (0.8); `model_run`, `model_plan` (0.9); `technology_run`, `technology_plan` (0.10) | `app/core/brain/models.py` |
+| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval, project definition, scope moves, scope approval, AI checks, re-checks, AI strategy approval, dataset searches with their pages, re-searches, dataset selection, model searches, model plan approval, technology plans, re-plans, approval); scope rules in `scope_rules.py`, AI strategy rules in `ai_strategy_rules.py`, dataset rules in `dataset_rules.py`, model rules in `model_rules.py`, technology rules in `technology_rules.py`; read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
 | Database | SQLAlchemy async engine; SQLite locally (`grey.db`); tables created at startup (new tables are added to an existing `grey.db` automatically) | `app/core/brain/database.py` |
 | Event envelope | `GreyEvent` (type, workspace_id, domain, workflow, stage, status, data, brain_patch, allowed_actions) | `app/core/events/schemas.py` |
 | Discovery workflow | `industry_selection` → `branch_selection` → ⏸ → `evidence_research` → ⏸ → `problem_extraction` → `problem_selection` (interrupt) → END | `app/domains/fyp/workflows/discovery/` |
@@ -190,11 +207,12 @@ The journey stops at the approved model plan. Technology, hardware, architecture
 | AI Strategy workflow (0.7) | `plan_ai_strategy` → `strategy_review` (interrupt: approve → END, recheck → `plan_ai_strategy`) | `app/domains/fyp/workflows/ai_strategy/` |
 | Dataset Discovery workflow (0.8) | `find_datasets` → `dataset_review` (interrupt: select → END, research → `find_datasets`) | `app/domains/fyp/workflows/dataset_discovery/` |
 | Model Selection workflow (0.9) | `find_models` → `model_review` (interrupt: approve → END, research → `find_models`) | `app/domains/fyp/workflows/model_selection/` |
-| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp`, `define_project`, `plan_ai_strategy` (LLM via gateway), `find_datasets`, `find_models` (search tool + LLM via gateway), registered at startup | `app/domains/fyp/skills/`, `main.py` |
+| Technology Plan workflow (0.10) | `plan_technology` → `technology_review` (interrupt: approve → END, replan → `plan_technology`) | `app/domains/fyp/workflows/technology_plan/` |
+| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp`, `define_project`, `plan_ai_strategy` (LLM via gateway), `find_datasets`, `find_models` (search tool + LLM via gateway), `plan_technology` (LLM), registered at startup | `app/domains/fyp/skills/`, `main.py` |
 | Search tool | `SearchGateway` (ordered fallback) over `SerpApiProvider`, `TavilySearchProvider`; `MockSearchProvider` by default | `app/core/tools/` |
 | LLM layer | Gateway, profiles, router, health, errors, schema tools; Fake + OpenAI-compatible (Groq) providers | `app/core/llm/` |
 | Taxonomy | 15 industries, 80 branches, validation helpers | `app/domains/fyp/workflows/discovery/taxonomy.py` |
-| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`, `POST /projects/{id}/ai-strategy` (stream), `POST /projects/{id}/ai-strategy/recheck` (stream), `POST /projects/{id}/ai-strategy/approve`, `GET /projects/{id}/ai-strategy`, `POST /projects/{id}/datasets` (stream), `POST /projects/{id}/datasets/research` (stream), `POST /projects/{id}/datasets/select`, `GET /projects/{id}/datasets`, `POST /projects/{id}/models` (stream), `POST /projects/{id}/models/research` (stream), `POST /projects/{id}/models/approve`, `GET /projects/{id}/models`, `GET /health` | `app/api/`, `main.py` |
+| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`, `POST /projects/{id}/ai-strategy` (stream), `POST /projects/{id}/ai-strategy/recheck` (stream), `POST /projects/{id}/ai-strategy/approve`, `GET /projects/{id}/ai-strategy`, `POST /projects/{id}/datasets` (stream), `POST /projects/{id}/datasets/research` (stream), `POST /projects/{id}/datasets/select`, `GET /projects/{id}/datasets`, `POST /projects/{id}/models` (stream), `POST /projects/{id}/models/research` (stream), `POST /projects/{id}/models/approve`, `GET /projects/{id}/models`, `POST /projects/{id}/technology` (stream), `POST /projects/{id}/technology/replan` (stream), `POST /projects/{id}/technology/approve`, `GET /projects/{id}/technology`, `GET /health` | `app/api/`, `main.py` |
 | CORS | Browser origins from `CORS_ORIGINS` (default `http://localhost:3000`) | `main.py` |
 
 ### Frontend (`Frontend/`)
@@ -202,7 +220,7 @@ The journey stops at the approved model plan. Technology, hardware, architecture
 | Area | What exists | Location |
 |---|---|---|
 | App shell | Next.js 15 App Router, Tailwind, sidebar placeholder, disabled chat input | `app/layout.tsx`, `app/page.tsx` |
-| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`, `defineProject`, `moveScopeItem`, `approveScope`, `checkAINeed`, `recheckAIStrategy`, `approveAIStrategy`, `findDatasets`, `requestDatasetAlternative`, `selectDataset`, `findModels`, `requestOtherModels`, `approveModels`), `readEventStream` | `core/grey-agent/` |
+| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`, `defineProject`, `moveScopeItem`, `approveScope`, `checkAINeed`, `recheckAIStrategy`, `approveAIStrategy`, `findDatasets`, `requestDatasetAlternative`, `selectDataset`, `findModels`, `requestOtherModels`, `approveModels`, `planTechnology`, `replanTechnology`, `approveTechnology`), `readEventStream` | `core/grey-agent/` |
 | UI state | `GreyUIState` from each `GreyEvent`: latest `eventData` + `lastEventType`, `progress`, `brainSummary` (camelCase from `brain_patch`) | `core/grey-agent/GreyAgentProvider.tsx` |
 | Discovery cards | `IndustrySelector`, `BranchSelector`, `ResearchProgressCard`, `ProblemProgressCard`, `ProblemOptions`, `ProblemOpportunityCard`, `SelectedProblemCard`, `StepChecklist` | `domains/fyp/components/` |
 | FYP cards (0.5) | `FunctionalAreaCard`, `FYPDirectionCard`, `ApprovedFYPCard` | `domains/fyp/components/` |
@@ -210,16 +228,17 @@ The journey stops at the approved model plan. Technology, hardware, architecture
 | AI strategy cards (0.7) | `AIStrategyCard`, `ApprovedAIStrategyCard` | `domains/fyp/components/` |
 | Dataset cards (0.8) | `DatasetRecommendationCard`, `SelectedDatasetCard` | `domains/fyp/components/` |
 | Model cards (0.9) | `ModelRecommendationCard`, `ApprovedModelsCard` | `domains/fyp/components/` |
-| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`); `projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`, `SCOPE_LISTS`); `aiStrategy.ts` (`readAIStrategy`, verdict / task / approach labels, `RECHECK_OPTIONS`); `datasets.ts` (`readDatasets`, `selectedOption`, `isSampleDatasets`, kind / fit labels, `RESEARCH_OPTIONS`); `models.ts` (`readModels`, `isSampleModels`, kind / use labels) | `domains/fyp/` |
+| Technology cards (0.10) | `TechnologyPlanCard`, `ApprovedTechnologyCard` | `domains/fyp/components/` |
+| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`); `projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`, `SCOPE_LISTS`); `aiStrategy.ts` (`readAIStrategy`, verdict / task / approach labels, `RECHECK_OPTIONS`); `datasets.ts` (`readDatasets`, `selectedOption`, `isSampleDatasets`, kind / fit labels, `RESEARCH_OPTIONS`); `models.ts` (`readModels`, `isSampleModels`, kind / use labels); `technology.ts` (`readTechnology`, area / cost labels) | `domains/fyp/` |
 
 ### Tests
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **1063 passing, 13 skipped** (2 live Groq + 9 live search + 2 live search-and-Groq tests) |
+| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **1113 passing, 14 skipped** (3 live Groq + 9 live search + 2 live search-and-Groq tests) |
 | Backend live LLM | `$env:RUN_LIVE_LLM_TESTS="1"; ...pytest -m live_llm -s` | 2 tests (gateway; `plan_ai_strategy` first check + re-check), need `GROQ_API_KEY`; use a little Groq quota. `tests/live/test_datasets_live.py` and `test_models_live.py` need **both** flags (`RUN_LIVE_SEARCH_TESTS=1` and `RUN_LIVE_LLM_TESTS=1`): about 4 search credits + 2–4 Groq calls |
 | Backend live search | `$env:RUN_LIVE_SEARCH_TESTS="1"; ...pytest -m live_search -s` | 9 tests, need `SERPAPI_API_KEY` / `TAVILY_API_KEY`; about 1 credit each |
-| Frontend (Vitest) | `cd Frontend; npm test` | **197 passing** |
+| Frontend (Vitest) | `cd Frontend; npm test` | **209 passing** |
 | Frontend type-check | `npm run type-check` | 0 errors |
 | Frontend build | `npm run build` | succeeds |
 
@@ -242,7 +261,7 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 
 ## 4. Not implemented (by design, for later releases)
 
-- Technology stack, hardware, architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the approved model plan
+- Architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the approved technology plan
 - Reading dataset pages or using dataset-site APIs (Kaggle, Hugging Face) for exact sizes and licenses (0.8 uses search snippets only); re-searches other than the two controlled ones; changing the selected dataset
 - Re-checks other than the two controlled ones (no free-text questions, no "use more AI"); keeping earlier AI strategy versions (a re-check replaces the draft; each attempt stays in `ai_strategy_run`)
 - Adding or rewording scope features, or asking Grey to rewrite the definition (0.6 allows moves between lists only)

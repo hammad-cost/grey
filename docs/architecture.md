@@ -228,6 +228,16 @@ selectDataset → dataset_selected (allows findModels) → adapter POSTs /models
     model_review ⏸  research (≤2, never repeats a page) ↺  |  approve → MODELS_APPROVED → models_approved
 ```
 
+### Technology path (Release 0.10)
+
+```
+approveModels → models_approved (allows planTechnology) → adapter POSTs /technology
+  technology_plan graph
+    plan_technology → PlanTechnologySkill (structured_reasoning, no search) → validation + technology_rules
+                    → runner saves the plan (TECHNOLOGY_PLAN) → technology_plan_ready
+    technology_review ⏸  replan "simpler" (≤2) ↺  |  approve → TECHNOLOGY_APPROVED → technology_approved
+```
+
 ## 3. Two kinds of state
 
 | | Project Brain | LangGraph state |

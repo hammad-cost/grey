@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-11 (Release 0.9)
+**Last updated:** 2026-10-11 (Release 0.10)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -28,6 +28,7 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F13 | AI necessity check and AI strategy (check, re-checks, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.7 |
 | F14 | Dataset discovery (search, primary + alternative, re-searches, selection) | ✅ (mock search + fake LLM by default; skill live-tested with real search + Groq) | 0.8 |
 | F15 | Pretrained models and APIs (search, 0–3 options with a use, re-searches, approval) | ✅ (mock search + fake LLM by default; skill live-tested with real search + Groq) | 0.9 |
+| F16 | Technology stack and hardware (decisions with reasons, hardware, simpler re-plans, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.10 |
 
 ---
 
@@ -307,3 +308,20 @@ After the student selects a dataset, Grey checks whether ready-made models, AI s
 | Project Brain | `model_run`, `model_plan`; stages `DATASET_SELECTED` → `MODEL_SELECTION` → `MODELS_APPROVED`; rules in `app/core/brain/model_rules.py` |
 | Events | `model_search_started` → `model_search_progress` ×4 → `models_ready` (`awaiting_user`, `approveModels` + `requestOtherModels` while possible, `data.models`); failures as in 0.8; `models_approved` (`complete`). |
 | Tests | Backend: `test_brain_models.py` (19), `test_model_search.py` (22), `test_find_models_skill.py` (23), `test_model_workflow.py` (13), `test_models_api.py` (6), live `test_models_live.py`. Frontend: adapter (3 new), `ModelRecommendationCard.test.tsx` (12) |
+
+---
+
+## F16 — Technology stack and hardware (Release 0.10)
+
+After the model plan is approved, Grey recommends one technology per needed stack area and the hardware the project needs (blueprint §27–29).
+
+| Layer | Detail |
+|---|---|
+| UI | `TechnologyPlanCard` (checklist; Try again; stack decisions with reasons; hardware with essential / cost / alternative; **Make it simpler / cheaper** with N of 2 left; **Approve technology plan** with confirm), `ApprovedTechnologyCard` — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.technology`; `brainSummary` (`technologyStatus`, `technologyPlanId`, `technologyReplansLeft`); `Frontend/domains/fyp/technology.ts` |
+| Adapter actions | `approveModels(id)` continues into `/technology` when the backend allows `planTechnology`; `planTechnology()`, `replanTechnology(preference)`, `approveTechnology(planId)` |
+| API | `POST /projects/{id}/technology` (stream; 409 model plan not approved / already planned / running), `POST /projects/{id}/technology/replan {preference}` (stream; 409 / 422), `POST /projects/{id}/technology/approve {plan_id}`, `GET /projects/{id}/technology` — `Backend/app/api/technology.py` |
+| Runner / workflow | `start_technology_plan()`, `start_technology_replan()`, `TechnologySession.events()`, `approve_technology()`; graph `technology_plan` — `Backend/app/domains/fyp/workflows/technology_plan/` |
+| Skill | `plan_technology` — `validation.py` (incl. option-list check), `skill.py`, `fake.py`; prompt `plan_technology.v1` |
+| Project Brain | `technology_run`, `technology_plan`; stages `MODELS_APPROVED` → `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED`; rules in `app/core/brain/technology_rules.py` |
+| Tests | Backend: `test_brain_technology.py` (14), `test_plan_technology_skill.py` (21), `test_technology_workflow.py` (9), `test_technology_api.py` (6), live `test_technology_live.py`. Frontend: adapter (2 new), `TechnologyPlanCard.test.tsx` (10) |

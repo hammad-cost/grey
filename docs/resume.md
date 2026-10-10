@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| Current release | **0.10 — Technology stack and hardware: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.9 is complete (local, not pushed). |
-| Current step | 0.10 Step 1 (plan + Brain storage). |
-| Last completed step | 0.9 Step 8 — docs + verification: 1063 backend + 13 skipped, 197 frontend, type-check + build OK; fake e2e through a real server OK; live find_models run (real search + Groq) OK — known issue 13. |
+| Current release | **0.11 — Architecture and evaluation plan: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.10 is complete (local, not pushed). |
+| Current step | 0.11 Step 1 (plan + Brain storage). |
+| Last completed step | 0.10 Step 8 — docs + verification: 1113 backend + 14 skipped, 209 frontend, type-check + build OK; fake e2e through a real server OK; live plan_technology run (Groq) OK. |
 | Next action | Continue the roadmap below, release by release. After each release: full tests, fake e2e, docs + memory, then the next release. Commit locally; **do not push** (the student says "push"). |
 | Last commit | `git log --oneline -10`. `origin/main` = 0.8 docs push; everything after it is local. |
 
@@ -17,8 +17,8 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 | Release | Blueprint | Review stage → end stage | Skill(s) | Status |
 |---|---|---|---|---|
 | 0.9 | §26 Pretrained models and APIs | `MODEL_SELECTION` → `MODELS_APPROVED` | `find_models` (search + LLM); no-AI projects: deterministic "no model needed", no search, no LLM | ✅ done |
-| 0.10 | §27–29 Technology stack + hardware | `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED` | `plan_technology` (LLM) | building |
-| 0.11 | §30–31 Architecture + evaluation plan | `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan`) | `design_architecture` (LLM) | planned |
+| 0.10 | §27–29 Technology stack + hardware | `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED` | `plan_technology` (LLM) | ✅ done |
+| 0.11 | §30–31 Architecture + evaluation plan | `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan`) | `design_architecture` (LLM) | building |
 | 0.12 | §32 Feasibility | `FEASIBILITY` → `FEASIBILITY_ACCEPTED` | `assess_feasibility` (LLM rates dimensions; overall High/Medium/Low computed in code) | planned |
 | 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | planned |
 | 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | planned |
@@ -30,13 +30,13 @@ Boundary: `MODELS_APPROVED → (plan) → TECHNOLOGY_PLAN (review: ≤2 "make it
 
 | Step | What | Commit |
 |---|---|---|
-| 1 | Brain: `technology_run`, `technology_plan` (summary, stack choices per area, hardware items); stage `TECHNOLOGY_APPROVED`; `technology_rules.py`; repository + snapshot | |
-| 2 | Skill `plan_technology` (LLM, `structured_reasoning`): one choice per needed area (frontend, backend, database, AI/ML, training, deployment) with why it suits THIS project; hardware items (normal laptop, GPU, Colab, cloud GPU, camera, sensors, Arduino, Raspberry Pi, Jetson, mobile, other) with purpose, essential?, cost level, alternative; checks; prompt; fake answers | |
-| 3 | `technology_plan` workflow (plan → review interrupt: replan ↺ / approve → END), runner, events, view; `models_approved` allows `planTechnology` | |
-| 4 | API: `POST /technology` (stream), `POST /technology/replan` (stream), `POST /technology/approve`, `GET /technology` | |
-| 5 | Frontend adapter: `planTechnology`, `replanTechnology`, `approveTechnology`; auto-start after `approveModels` | |
-| 6 | `TechnologyPlanCard`, `ApprovedTechnologyCard`; `technology.ts` | |
-| 7 | Docs + full verification + fake e2e + live Groq run | |
+| 1 | Brain: `technology_run`, `technology_plan` (summary, stack choices per area, hardware items); stage `TECHNOLOGY_APPROVED`; `technology_rules.py`; repository + snapshot | ✅ `2e9bee9` |
+| 2 | Skill `plan_technology` (LLM, `structured_reasoning`): one choice per needed area (frontend, backend, database, AI/ML, training, deployment) with why it suits THIS project; hardware items (normal laptop, GPU, Colab, cloud GPU, camera, sensors, Arduino, Raspberry Pi, Jetson, mobile, other) with purpose, essential?, cost level, alternative; checks; prompt; fake answers | ✅ `a7ff3fe` |
+| 3 | `technology_plan` workflow (plan → review interrupt: replan ↺ / approve → END), runner, events, view; `models_approved` allows `planTechnology` | ✅ `7cca351` |
+| 4 | API: `POST /technology` (stream), `POST /technology/replan` (stream), `POST /technology/approve`, `GET /technology` | ✅ `ea78cd4` |
+| 5 | Frontend adapter: `planTechnology`, `replanTechnology`, `approveTechnology`; auto-start after `approveModels` | ✅ `d0f8bbe` |
+| 6 | `TechnologyPlanCard`, `ApprovedTechnologyCard`; `technology.ts` | ✅ `7785b15` |
+| 7 | Docs + full verification + fake e2e + live Groq run | ✅ `docs commit` |
 
 Decisions: decisions, not option lists (§28): exactly one choice per area, only the areas the project needs (2–6), each with a project-specific reason; AI/ML and training areas only when the AI strategy uses AI (and AI/ML is then required); at least a frontend or a backend so the project is demonstrable; 1–5 hardware items, a high-cost item must name a cheaper alternative; one controlled re-plan "Make it simpler / cheaper" (max 2); approval with confirm. No search (stack advice needs no web pages).
 

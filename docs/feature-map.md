@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-11 (Release 0.8)
+**Last updated:** 2026-10-11 (Release 0.9)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -27,6 +27,7 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F12 | Project definition and scope (definition, scope moves, approval) | ✅ (fake LLM by default; not yet run live) | 0.6 |
 | F13 | AI necessity check and AI strategy (check, re-checks, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.7 |
 | F14 | Dataset discovery (search, primary + alternative, re-searches, selection) | ✅ (mock search + fake LLM by default; skill live-tested with real search + Groq) | 0.8 |
+| F15 | Pretrained models and APIs (search, 0–3 options with a use, re-searches, approval) | ✅ (mock search + fake LLM by default; skill live-tested with real search + Groq) | 0.9 |
 
 ---
 
@@ -288,3 +289,21 @@ After the student approves the AI strategy, Grey searches dataset sites and reco
 | Project Brain | `dataset_run` (preference, status, searches_used, candidates JSON, provider/model/prompt version, error), `dataset_plan` (plan JSON, status draft/selected, researches_used, preference, selected, updated_at, selected_at). Stages `AI_STRATEGY_APPROVED` → `DATASET_DISCOVERY` → `DATASET_SELECTED`, each in the same commit as its data. Rules in `app/core/brain/dataset_rules.py`. |
 | Events | `dataset_search_started` → `dataset_search_progress` ×4 (searching dataset sites / looking at the datasets found before, choosing two, checking they fit, saving) → `dataset_options_ready` (stage `DATASET_DISCOVERY`, `awaiting_user`, allowed `selectDataset` + `requestDatasetAlternative` while a re-search is possible, `data.datasets`). Every event has `data.research`. Failure: first search → `dataset_search_failed` (`blocked`, allowed `findDatasets`); re-search → `dataset_search_failed` (`awaiting_user`, datasets kept, review actions). Selection: `dataset_selected` (stage `DATASET_SELECTED`, `complete`, no actions). |
 | Tests | Backend: `test_brain_datasets.py` (30), `test_dataset_search.py` (39), `test_find_datasets_skill.py` (34), `test_dataset_workflow.py` (21), `tests/integration/test_datasets_api.py` (12), live `tests/live/test_datasets_live.py` (1, skipped by default). Frontend: adapter tests (5 new), `datasets.test.ts`, `DatasetRecommendationCard.test.tsx`, `SelectedDatasetCard.test.tsx` |
+
+---
+
+## F15 — Pretrained models and APIs (Release 0.9)
+
+After the student selects a dataset, Grey checks whether ready-made models, AI services or code exist for the AI task and recommends what to do with each (blueprint §26). Projects without AI get "no model needed" without any search or model call.
+
+| Layer | Detail |
+|---|---|
+| UI | `ModelRecommendationCard` (checklist; Try again; advice; 0–3 option panels — link, kind · source · role, use badge, reason, limitations; "no model needed"; "nothing ready-made fits"; **Look for other models** with N of 2 left; **Approve model plan** with confirm; Sample data badge), `ApprovedModelsCard` — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.models`; `brainSummary` (`modelStatus`, `modelPlanId`, `modelOptionCount`, `modelResearchesLeft`); parsed by `Frontend/domains/fyp/models.ts` |
+| Adapter actions | `selectDataset(id, choice)` continues into `/models` when the backend allows `findModels`; `findModels()`, `requestOtherModels(preference)`, `approveModels(planId)` |
+| API | `POST /projects/{id}/models` → **200** NDJSON; **404**; **409** no dataset selected / already looked / running. `POST /projects/{id}/models/research {preference}` → **200** NDJSON; **409** nothing to review / none left / no AI / running; **422** unknown preference. `POST /projects/{id}/models/approve {plan_id}` → **200** `models_approved`; **409**. `GET /projects/{id}/models` → `ModelsResponse` — `Backend/app/api/models.py` |
+| Runner / workflow | `start_model_search()`, `start_model_research()`, `ModelSession.events()`, `approve_model_plan()`; graph `model_selection`: `find_models` → `model_review` — `Backend/app/domains/fyp/workflows/model_selection/` |
+| Skill | `find_models` — `search.py` (queries, `is_model_page`), `validation.py`, `skill.py`, `fake.py`; prompt `find_models.v1` |
+| Project Brain | `model_run`, `model_plan`; stages `DATASET_SELECTED` → `MODEL_SELECTION` → `MODELS_APPROVED`; rules in `app/core/brain/model_rules.py` |
+| Events | `model_search_started` → `model_search_progress` ×4 → `models_ready` (`awaiting_user`, `approveModels` + `requestOtherModels` while possible, `data.models`); failures as in 0.8; `models_approved` (`complete`). |
+| Tests | Backend: `test_brain_models.py` (19), `test_model_search.py` (22), `test_find_models_skill.py` (23), `test_model_workflow.py` (13), `test_models_api.py` (6), live `test_models_live.py`. Frontend: adapter (3 new), `ModelRecommendationCard.test.tsx` (12) |

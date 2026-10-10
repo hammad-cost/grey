@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| Current release | **0.9 — Pretrained models and APIs: building** (autonomous run 0.9 → 0.14 authorized by the student on 2026-10-11: "get this AI product done till 0.14 in one shot … update memory and resume after every release"). 0.8 is complete and pushed (`990a399`). |
-| Current step | 0.9 Step 1 (Brain storage). |
-| Last completed step | 0.8 Step 8 (docs + full verification: 980 backend + 12 skipped, 182 frontend). |
+| Current release | **0.10 — Technology stack and hardware: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.9 is complete (local, not pushed). |
+| Current step | 0.10 Step 1 (plan + Brain storage). |
+| Last completed step | 0.9 Step 8 — docs + verification: 1063 backend + 13 skipped, 197 frontend, type-check + build OK; fake e2e through a real server OK; live find_models run (real search + Groq) OK — known issue 13. |
 | Next action | Continue the roadmap below, release by release. After each release: full tests, fake e2e, docs + memory, then the next release. Commit locally; **do not push** (the student says "push"). |
 | Last commit | `git log --oneline -10`. `origin/main` = 0.8 docs push; everything after it is local. |
 
@@ -16,8 +16,8 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 
 | Release | Blueprint | Review stage → end stage | Skill(s) | Status |
 |---|---|---|---|---|
-| 0.9 | §26 Pretrained models and APIs | `MODEL_SELECTION` → `MODELS_APPROVED` | `find_models` (search + LLM); no-AI projects: deterministic "no model needed", no search, no LLM | building |
-| 0.10 | §27–29 Technology stack + hardware | `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED` | `plan_technology` (LLM) | planned |
+| 0.9 | §26 Pretrained models and APIs | `MODEL_SELECTION` → `MODELS_APPROVED` | `find_models` (search + LLM); no-AI projects: deterministic "no model needed", no search, no LLM | ✅ done |
+| 0.10 | §27–29 Technology stack + hardware | `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED` | `plan_technology` (LLM) | building |
 | 0.11 | §30–31 Architecture + evaluation plan | `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan`) | `design_architecture` (LLM) | planned |
 | 0.12 | §32 Feasibility | `FEASIBILITY` → `FEASIBILITY_ACCEPTED` | `assess_feasibility` (LLM rates dimensions; overall High/Medium/Low computed in code) | planned |
 | 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | planned |
@@ -30,14 +30,14 @@ Not in 0.9: stack, hardware, architecture, evaluation, feasibility, proposal; re
 
 | Step | What | Commit |
 |---|---|---|
-| 1 | Brain: `model_run` (with the pages found), `model_plan` (needs_model, summary, 0–3 options); stages `MODEL_SELECTION`, `MODELS_APPROVED`; `model_rules.py`; repository + snapshot | |
-| 2 | Model search (plain code): reuse the 0.8 search runner with a model-page filter (Hugging Face model pages, Kaggle models, PyTorch Hub, GitHub repos, Papers with Code, cloud AI service pages); 4 searches, 3 for "other models" | |
-| 3 | Skill `find_models`: model picks 0–3 found pages by number, each with kind (pretrained model / API service / code repository), use (use directly / fine-tune / benchmark / avoid), why, which part of the system, limitations; no-AI projects get a code-built "no model needed" plan (no search, no LLM) | |
-| 4 | `model_selection` workflow (find → review interrupt: research ↺ / approve → END), runner, events, view; `dataset_selected` allows `findModels` | |
-| 5 | API: `POST /models` (stream), `POST /models/research` (stream), `POST /models/approve`, `GET /models` | |
-| 6 | Frontend adapter: `findModels`, `requestOtherModels`, `approveModels`; auto-start after `selectDataset` | |
-| 7 | `ModelRecommendationCard`, `ApprovedModelsCard`; `models.ts` | |
-| 8 | Docs + full verification + fake e2e + live run | |
+| 1 | Brain: `model_run` (with the pages found), `model_plan` (needs_model, summary, 0–3 options); stages `MODEL_SELECTION`, `MODELS_APPROVED`; `model_rules.py`; repository + snapshot | ✅ `02f33fb` |
+| 2 | Model search (plain code): reuse the 0.8 search runner with a model-page filter (Hugging Face model pages, Kaggle models, PyTorch Hub, GitHub repos, Papers with Code, cloud AI service pages); 4 searches, 3 for "other models" | ✅ `6bf2f4d` |
+| 3 | Skill `find_models`: model picks 0–3 found pages by number, each with kind (pretrained model / API service / code repository), use (use directly / fine-tune / benchmark / avoid), why, which part of the system, limitations; no-AI projects get a code-built "no model needed" plan (no search, no LLM) | ✅ `355fe30` |
+| 4 | `model_selection` workflow (find → review interrupt: research ↺ / approve → END), runner, events, view; `dataset_selected` allows `findModels` | ✅ `8b26eea` |
+| 5 | API: `POST /models` (stream), `POST /models/research` (stream), `POST /models/approve`, `GET /models` | ✅ `7a0c5a2` |
+| 6 | Frontend adapter: `findModels`, `requestOtherModels`, `approveModels`; auto-start after `selectDataset` | ✅ `c627bba` |
+| 7 | `ModelRecommendationCard`, `ApprovedModelsCard`; `models.ts` | ✅ `020cb6b` |
+| 8 | Docs + full verification + fake e2e + live run | ✅ `docs commit` |
 
 Decisions: found pages only (picked by number, never typed links); an empty list is allowed when nothing fits (Grey says so and the AI strategy's own approach stands); no-AI projects skip search and the model; one controlled re-search "Look for other models" (max 2, never repeats a page); approval with confirm.
 

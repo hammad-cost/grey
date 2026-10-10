@@ -216,6 +216,18 @@ approveAIStrategy → ai_strategy_approved (allows findDatasets) → adapter POS
   which re-searches are offered = view.py, using the same rules as the repository
 ```
 
+### Model path (Release 0.9)
+
+```
+selectDataset → dataset_selected (allows findModels) → adapter POSTs /models
+  model_selection graph
+    find_models → FindModelsSkill
+                  no AI in the approved strategy → code-built "no model needed" (no search, no LLM)
+                  else: 4 searches → keep model / API / code pages → model picks 0-3 BY NUMBER + a use each
+                  → validation.py + model_rules → runner saves plan + pages (MODEL_SELECTION) → models_ready
+    model_review ⏸  research (≤2, never repeats a page) ↺  |  approve → MODELS_APPROVED → models_approved
+```
+
 ## 3. Two kinds of state
 
 | | Project Brain | LangGraph state |

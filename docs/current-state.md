@@ -1,12 +1,29 @@
 # Grey — Current State
 
-**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · 0.5 From problem to FYP (local, not yet run live) · 0.6 Project definition and scope (local, not yet run live) · 0.7 AI necessity check and AI strategy (local, skill live-tested with Groq) · **0.8 Dataset discovery (complete, local commits, not pushed; skill live-tested with real search + Groq)**
+**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · 0.5 From problem to FYP (local, not yet run live) · 0.6 Project definition and scope (local, not yet run live) · 0.7 AI necessity check and AI strategy (local, skill live-tested with Groq) · 0.8 Dataset discovery (pushed; live-tested) · **0.9 Pretrained models and APIs (complete, local commits, not pushed; skill live-tested with real search + Groq)**
 **Last updated:** 2026-10-11
-**Scope:** FYP Companion, from "Start my FYP" to a selected dataset (stage `DATASET_SELECTED`)
+**Scope:** FYP Companion, from "Start my FYP" to an approved model plan (stage `MODELS_APPROVED`)
 
 This file records exactly what is implemented today — no more, no less.
 For the planned product, see `docs/specs/`. For how the pieces fit together, see `docs/architecture.md`.
 For the quick recovery checkpoint (current step, next action), see `docs/resume.md`.
+
+---
+
+## 0f. Release 0.9 (Pretrained models and APIs) — what it added
+
+Product blueprint Step 16 (§26). Grey checks whether ready-made models, APIs or code already exist for the AI task and says, for each, whether to use it directly, fine-tune it, use it as a benchmark, or avoid it. Built in the autonomous run (2026-10-11).
+
+| Step | Built | Location |
+|---|---|---|
+| 1 | Project Brain: `model_run` (each search, with the pages found), `model_plan` (one per project: `needs_model`, summary, 0–3 options — kind, name, source, link, use, reason, role, limitations; status `draft` / `approved`; `researches_used`). Stages `MODEL_SELECTION` (review) and `MODELS_APPROVED`. Rules (`model_rules.py`): every option links to a page the search found, no page twice, no models for a project without AI, "Look for other models" never repeats a page; at most **2** re-searches. | `Backend/app/core/brain/` |
+| 2 | Model search (plain code): 4 searches on Hugging Face / Kaggle models, GitHub / Papers with Code, PyTorch Hub, and cloud AI service pages (3 differently worded ones for "other models"); keeps only pages about one model / API / code base. Reuses the 0.8 search runner (it now takes a page filter); general focus only, so SerpAPI never switches to Google Scholar. Shares `DATASET_MAX_SEARCHES`. | `Backend/app/domains/fyp/skills/find_models/search.py` |
+| 3 | Skill **`find_models`** (`structured_reasoning`): the model picks 0–3 pages by number with kind (pretrained model / AI service / code repository), use (use directly / fine-tune / benchmark / avoid), reason, role and limitations. Checks: unknown choices or pages, counts, **percentages the page doesn't state**, links, length, the model rules; one retry. **Projects without AI get a code-built "no model needed" plan — no search, no model call.** Prompt `find_models.v1`; fake answers. | `Backend/app/domains/fyp/skills/find_models/`, `app/domains/fyp/prompts/find_models.py` |
+| 4 | **`model_selection`** workflow: `find_models` → `model_review` (interrupt: approve → END, research → back). Events `model_search_started → model_search_progress ×4 → models_ready` (or `model_search_failed`), `models_approved`; restart-safe. `dataset_selected` now allows `findModels`. | `Backend/app/domains/fyp/workflows/model_selection/` |
+| 5 | API: `POST /projects/{id}/models` (stream), `POST /projects/{id}/models/research` (stream), `POST /projects/{id}/models/approve`, `GET /projects/{id}/models`. API version 0.9.0. | `Backend/app/api/models.py` |
+| 6 | Adapter: `selectDataset()` continues into the model search; `findModels()`, `requestOtherModels(preference)`, `approveModels(planId)`; `brainSummary` gains `modelStatus`, `modelPlanId`, `modelOptionCount`, `modelResearchesLeft`. | `Frontend/core/grey-agent/` |
+| 7 | UI: `ModelRecommendationCard` (checklist; Try again; Grey's advice; 0–3 option panels with link, kind · source · role, a coloured use badge, reason, limitations; "no model needed" for projects without AI; "Nothing ready-made fits" when the list is empty; **Look for other models** with N of 2 left; **Approve model plan** with confirm; Sample data badge), `ApprovedModelsCard`; `models.ts`. | `Frontend/domains/fyp/` |
+| 8 | Docs + verification; fake e2e through a real server; live run (real search + Groq): found real AIS anomaly-detection repositories on GitHub and Azure's anomaly-detection service, no rejected replies — see known issue 13. | `docs/`, `Backend/tests/live/test_models_live.py` |
 
 ---
 
@@ -148,10 +165,11 @@ The LLM runs in **fake mode by default** (no key, no cost); with `LLM_MODE=live`
 15. **Approve AI strategy** (with a confirm step) → see **Your approved AI strategy** (stage `AI_STRATEGY_APPROVED`) — and, without clicking again, watch Grey search dataset sites.
 16. Review **Pick the data you'll build on**: what the data is for, then **Grey's main pick** and an **Alternative** side by side — each with a link to the dataset page Grey found (or, for data you generate / collect, how to get it), where it's from, how well it fits, why it fits, size, labels, license, main features, the preparation it needs and its limitations. Facts the search didn't show say "Not stated — check the dataset page".
 17. Optionally ask Grey to search again, up to 2 times: **Find other options** (never the same datasets twice) or **I'd rather create or collect my own data** (only the ones that make sense are shown).
-18. **Use this dataset** on either one (with a confirm step) → see **Your selected dataset** (stage `DATASET_SELECTED`).
+18. **Use this dataset** on either one (with a confirm step) → see **Your selected dataset** (stage `DATASET_SELECTED`) — and, without clicking again, watch Grey check what already exists.
+19. Review **What already exists for your project**: Grey's advice and up to 3 ready-made models, AI services or code repositories (each linked to the page Grey found) with what to do with it — use it directly, fine-tune it, use it as a benchmark, or avoid it — and why. A project without AI simply sees **No model needed**. Optionally **Look for other models** (up to 2 times), then **Approve model plan** (with a confirm step) → **Your approved model plan** (stage `MODELS_APPROVED`).
 
 On any failure: a calm message and **Try again** (or **Research again** when the evidence was too thin). A failed redesign keeps the current design and doesn't use up a redesign.
-The journey stops at the selected dataset. Pretrained models / APIs, technology, hardware, architecture, evaluation, feasibility and the proposal do not exist yet.
+The journey stops at the approved model plan. Technology, hardware, architecture, evaluation, feasibility and the proposal do not exist yet.
 
 ---
 
@@ -162,8 +180,8 @@ The journey stops at the selected dataset. Pretrained models / APIs, technology,
 | Area | What exists | Location |
 |---|---|---|
 | Configuration | `APP_ENV`, `DATABASE_URL`, `CORS_ORIGINS`, `SEARCH_PROVIDERS`, `SERPAPI_API_KEY`, `TAVILY_API_KEY`, `RESEARCH_MAX_SEARCHES`, `DATASET_MAX_SEARCHES`, `SEARCH_TIMEOUT_SECONDS`, `SEARCH_MAX_RETRIES`, `SEARCH_COOLDOWN_SECONDS`, `SEARCH_QUOTA_COOLDOWN_SECONDS`, `MOCK_SEARCH_DELAY_MS`, `LLM_MODE`, `GROQ_API_KEY`, `GROQ_BASE_URL`, `LLM_PROFILE_*` overrides, `LLM_TIMEOUT_SECONDS`, `LLM_TOTAL_DEADLINE_SECONDS`, `LLM_MAX_RETRIES`, `LLM_COOLDOWN_SECONDS`, `LLM_QUOTA_COOLDOWN_SECONDS` | `app/core/config/settings.py`, `.env.example` |
-| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5); `project_definition_run`, `project_definition`, `scope_item` (0.6); `ai_strategy_run`, `ai_strategy` (0.7); `dataset_run`, `dataset_plan` (0.8) | `app/core/brain/models.py` |
-| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval, project definition, scope moves, scope approval, AI checks, re-checks, AI strategy approval, dataset searches with their pages, re-searches, dataset selection); scope rules in `scope_rules.py`, AI strategy rules in `ai_strategy_rules.py`, dataset rules in `dataset_rules.py`; read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
+| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5); `project_definition_run`, `project_definition`, `scope_item` (0.6); `ai_strategy_run`, `ai_strategy` (0.7); `dataset_run`, `dataset_plan` (0.8); `model_run`, `model_plan` (0.9) | `app/core/brain/models.py` |
+| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval, project definition, scope moves, scope approval, AI checks, re-checks, AI strategy approval, dataset searches with their pages, re-searches, dataset selection, model searches, model plan approval); scope rules in `scope_rules.py`, AI strategy rules in `ai_strategy_rules.py`, dataset rules in `dataset_rules.py`, model rules in `model_rules.py`; read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
 | Database | SQLAlchemy async engine; SQLite locally (`grey.db`); tables created at startup (new tables are added to an existing `grey.db` automatically) | `app/core/brain/database.py` |
 | Event envelope | `GreyEvent` (type, workspace_id, domain, workflow, stage, status, data, brain_patch, allowed_actions) | `app/core/events/schemas.py` |
 | Discovery workflow | `industry_selection` → `branch_selection` → ⏸ → `evidence_research` → ⏸ → `problem_extraction` → `problem_selection` (interrupt) → END | `app/domains/fyp/workflows/discovery/` |
@@ -171,11 +189,12 @@ The journey stops at the selected dataset. Pretrained models / APIs, technology,
 | Project Definition workflow (0.6) | `define_project` → `scope_review` (interrupt: move → `scope_review`, approve → END) | `app/domains/fyp/workflows/project_definition/` |
 | AI Strategy workflow (0.7) | `plan_ai_strategy` → `strategy_review` (interrupt: approve → END, recheck → `plan_ai_strategy`) | `app/domains/fyp/workflows/ai_strategy/` |
 | Dataset Discovery workflow (0.8) | `find_datasets` → `dataset_review` (interrupt: select → END, research → `find_datasets`) | `app/domains/fyp/workflows/dataset_discovery/` |
-| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp`, `define_project`, `plan_ai_strategy` (LLM via gateway), `find_datasets` (search tool + LLM via gateway), registered at startup | `app/domains/fyp/skills/`, `main.py` |
+| Model Selection workflow (0.9) | `find_models` → `model_review` (interrupt: approve → END, research → `find_models`) | `app/domains/fyp/workflows/model_selection/` |
+| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp`, `define_project`, `plan_ai_strategy` (LLM via gateway), `find_datasets`, `find_models` (search tool + LLM via gateway), registered at startup | `app/domains/fyp/skills/`, `main.py` |
 | Search tool | `SearchGateway` (ordered fallback) over `SerpApiProvider`, `TavilySearchProvider`; `MockSearchProvider` by default | `app/core/tools/` |
 | LLM layer | Gateway, profiles, router, health, errors, schema tools; Fake + OpenAI-compatible (Groq) providers | `app/core/llm/` |
 | Taxonomy | 15 industries, 80 branches, validation helpers | `app/domains/fyp/workflows/discovery/taxonomy.py` |
-| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`, `POST /projects/{id}/ai-strategy` (stream), `POST /projects/{id}/ai-strategy/recheck` (stream), `POST /projects/{id}/ai-strategy/approve`, `GET /projects/{id}/ai-strategy`, `POST /projects/{id}/datasets` (stream), `POST /projects/{id}/datasets/research` (stream), `POST /projects/{id}/datasets/select`, `GET /projects/{id}/datasets`, `GET /health` | `app/api/`, `main.py` |
+| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`, `POST /projects/{id}/ai-strategy` (stream), `POST /projects/{id}/ai-strategy/recheck` (stream), `POST /projects/{id}/ai-strategy/approve`, `GET /projects/{id}/ai-strategy`, `POST /projects/{id}/datasets` (stream), `POST /projects/{id}/datasets/research` (stream), `POST /projects/{id}/datasets/select`, `GET /projects/{id}/datasets`, `POST /projects/{id}/models` (stream), `POST /projects/{id}/models/research` (stream), `POST /projects/{id}/models/approve`, `GET /projects/{id}/models`, `GET /health` | `app/api/`, `main.py` |
 | CORS | Browser origins from `CORS_ORIGINS` (default `http://localhost:3000`) | `main.py` |
 
 ### Frontend (`Frontend/`)
@@ -183,23 +202,24 @@ The journey stops at the selected dataset. Pretrained models / APIs, technology,
 | Area | What exists | Location |
 |---|---|---|
 | App shell | Next.js 15 App Router, Tailwind, sidebar placeholder, disabled chat input | `app/layout.tsx`, `app/page.tsx` |
-| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`, `defineProject`, `moveScopeItem`, `approveScope`, `checkAINeed`, `recheckAIStrategy`, `approveAIStrategy`, `findDatasets`, `requestDatasetAlternative`, `selectDataset`), `readEventStream` | `core/grey-agent/` |
+| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`, `defineProject`, `moveScopeItem`, `approveScope`, `checkAINeed`, `recheckAIStrategy`, `approveAIStrategy`, `findDatasets`, `requestDatasetAlternative`, `selectDataset`, `findModels`, `requestOtherModels`, `approveModels`), `readEventStream` | `core/grey-agent/` |
 | UI state | `GreyUIState` from each `GreyEvent`: latest `eventData` + `lastEventType`, `progress`, `brainSummary` (camelCase from `brain_patch`) | `core/grey-agent/GreyAgentProvider.tsx` |
 | Discovery cards | `IndustrySelector`, `BranchSelector`, `ResearchProgressCard`, `ProblemProgressCard`, `ProblemOptions`, `ProblemOpportunityCard`, `SelectedProblemCard`, `StepChecklist` | `domains/fyp/components/` |
 | FYP cards (0.5) | `FunctionalAreaCard`, `FYPDirectionCard`, `ApprovedFYPCard` | `domains/fyp/components/` |
 | Definition cards (0.6) | `ProjectDefinitionCard`, `ApprovedScopeCard` | `domains/fyp/components/` |
 | AI strategy cards (0.7) | `AIStrategyCard`, `ApprovedAIStrategyCard` | `domains/fyp/components/` |
 | Dataset cards (0.8) | `DatasetRecommendationCard`, `SelectedDatasetCard` | `domains/fyp/components/` |
-| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`); `projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`, `SCOPE_LISTS`); `aiStrategy.ts` (`readAIStrategy`, verdict / task / approach labels, `RECHECK_OPTIONS`); `datasets.ts` (`readDatasets`, `selectedOption`, `isSampleDatasets`, kind / fit labels, `RESEARCH_OPTIONS`) | `domains/fyp/` |
+| Model cards (0.9) | `ModelRecommendationCard`, `ApprovedModelsCard` | `domains/fyp/components/` |
+| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`); `projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`, `SCOPE_LISTS`); `aiStrategy.ts` (`readAIStrategy`, verdict / task / approach labels, `RECHECK_OPTIONS`); `datasets.ts` (`readDatasets`, `selectedOption`, `isSampleDatasets`, kind / fit labels, `RESEARCH_OPTIONS`); `models.ts` (`readModels`, `isSampleModels`, kind / use labels) | `domains/fyp/` |
 
 ### Tests
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **980 passing, 12 skipped** (2 live Groq + 9 live search + 1 live search-and-Groq tests) |
-| Backend live LLM | `$env:RUN_LIVE_LLM_TESTS="1"; ...pytest -m live_llm -s` | 2 tests (gateway; `plan_ai_strategy` first check + re-check), need `GROQ_API_KEY`; use a little Groq quota. `tests/live/test_datasets_live.py` needs **both** flags (`RUN_LIVE_SEARCH_TESTS=1` and `RUN_LIVE_LLM_TESTS=1`): about 4 search credits + 2–4 Groq calls |
+| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **1063 passing, 13 skipped** (2 live Groq + 9 live search + 2 live search-and-Groq tests) |
+| Backend live LLM | `$env:RUN_LIVE_LLM_TESTS="1"; ...pytest -m live_llm -s` | 2 tests (gateway; `plan_ai_strategy` first check + re-check), need `GROQ_API_KEY`; use a little Groq quota. `tests/live/test_datasets_live.py` and `test_models_live.py` need **both** flags (`RUN_LIVE_SEARCH_TESTS=1` and `RUN_LIVE_LLM_TESTS=1`): about 4 search credits + 2–4 Groq calls |
 | Backend live search | `$env:RUN_LIVE_SEARCH_TESTS="1"; ...pytest -m live_search -s` | 9 tests, need `SERPAPI_API_KEY` / `TAVILY_API_KEY`; about 1 credit each |
-| Frontend (Vitest) | `cd Frontend; npm test` | **182 passing** |
+| Frontend (Vitest) | `cd Frontend; npm test` | **197 passing** |
 | Frontend type-check | `npm run type-check` | 0 errors |
 | Frontend build | `npm run build` | succeeds |
 
@@ -222,7 +242,7 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 
 ## 4. Not implemented (by design, for later releases)
 
-- Pretrained models / APIs, technology stack, hardware, architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the selected dataset
+- Technology stack, hardware, architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the approved model plan
 - Reading dataset pages or using dataset-site APIs (Kaggle, Hugging Face) for exact sizes and licenses (0.8 uses search snippets only); re-searches other than the two controlled ones; changing the selected dataset
 - Re-checks other than the two controlled ones (no free-text questions, no "use more AI"); keeping earlier AI strategy versions (a re-check replaces the draft; each attempt stays in `ai_strategy_run`)
 - Adding or rewording scope features, or asking Grey to rewrite the definition (0.6 allows moves between lists only)
@@ -266,6 +286,8 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 11. **Free search plans are small.** One research run uses about 12 searches (cap 15). When SerpAPI runs out, Grey switches to Tavily; when both run out, research shows "please try again".
 
 12. **Dataset live run findings (2026-10-11, Defense → Navy sample, not yet fixed):** the 4 searches returned 8 real dataset pages (all from Tavily; every one a real Kaggle / Hugging Face dataset page, no portal home pages), but none was about vessels — they were general "anomaly detection" datasets, because the searches use the branch and task words, not domain words like "AIS". Groq correctly refused the weak matches and recommended simulated + collected vessel data instead. In the "how to get it" text for own data, the model named outside data services (e.g. MarineTraffic, AISHub) that Grey did not verify — the checks only verify facts about the pages found. Possible later fixes: domain keywords from the problem in the searches, and a check on own-data texts.
+
+13. **Model live run findings (2026-10-11, Defense → Navy sample):** the 4 searches found 8 pages, including two real AIS anomaly-detection repositories on GitHub (Grey suggested fine-tuning one and benchmarking the other) and Azure Anomaly Detector pages. Grey suggested the Azure service as a benchmark although another found page (a Q&A) said the service is being retired — Grey only sees snippets, so it can't check whether a service is still available. Possible later fix: tell the model when found pages contradict each other, or read the pages.
 
 12. **Release 0.5 has not been run with the real model yet.** Everything is tested with the fake LLM (and once end to end through a real server in fake mode). The first live run with Groq may need prompt tweaks. Fake-mode areas and designs are template-based (the "Sample data" badge shows when the evidence is mock data).
 

@@ -183,7 +183,7 @@ class DatasetEventBuilder:
 
 
 def dataset_selected_event(workspace_id: str, view: DatasetView) -> GreyEvent:
-    """The student selected a dataset. Release 0.8 ends here."""
+    """The student selected a dataset. Next, Grey looks for pretrained models and APIs (Release 0.9)."""
     return build_event(
         type=EventType.DATASET_SELECTED,
         workspace_id=workspace_id,
@@ -192,5 +192,5 @@ def dataset_selected_event(workspace_id: str, view: DatasetView) -> GreyEvent:
         status=EventStatus.COMPLETE,
         data={"datasets": view.model_dump(mode="json")},
         brain_patch={"workflow_state": WorkflowState.DATASET_SELECTED.value, **_view_patch(view)},
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.FIND_MODELS],
     )

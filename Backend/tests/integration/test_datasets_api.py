@@ -165,7 +165,7 @@ async def test_selection_ends_release_0_8(client: AsyncClient):
     assert event["type"] == "dataset_selected"
     assert event["stage"] == "DATASET_SELECTED"
     assert event["status"] == "complete"
-    assert event["allowed_actions"] == []
+    assert event["allowed_actions"] == ["findModels"]            # Release 0.9: models come next
     brain = (await client.get(f"/projects/{workspace_id}")).json()
     assert brain["workflow_state"] == "DATASET_SELECTED"
     assert brain["dataset_plan"]["selected"] == "primary"

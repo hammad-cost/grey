@@ -335,7 +335,7 @@ async def test_selecting_the_alternative_ends_release_0_8(repo, setup, graph):  
     assert event.type == EventType.DATASET_SELECTED
     assert event.stage == WorkflowState.DATASET_SELECTED.value
     assert event.status == EventStatus.COMPLETE
-    assert event.allowed_actions == []
+    assert event.allowed_actions == [AllowedAction.FIND_MODELS]     # Release 0.9: models come next
     assert event.data["datasets"]["plan"]["selected"] == "alternative"
     assert event.data["datasets"]["available_researches"] == []
     assert event.brain_patch["dataset_selected"] == plan_of(ready)["alternative"]["name"]

@@ -73,6 +73,13 @@ class EventType(str, Enum):
     DATASET_SEARCH_FAILED = "dataset_search_failed"
     DATASET_SELECTED = "dataset_selected"
 
+    # Release 0.9 — pretrained models and APIs. Safe activity only, never reasoning.
+    MODEL_SEARCH_STARTED = "model_search_started"
+    MODEL_SEARCH_PROGRESS = "model_search_progress"
+    MODELS_READY = "models_ready"
+    MODEL_SEARCH_FAILED = "model_search_failed"
+    MODELS_APPROVED = "models_approved"
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
     ARCHITECTURE_READY = "architecture_ready"
@@ -121,6 +128,9 @@ class AllowedAction(str, Enum):
     FIND_DATASETS = "findDatasets"                 # search for datasets and recommend two (or retry)
     SELECT_DATASET = "selectDataset"               # select the primary or the alternative dataset
     REQUEST_DATASET_ALTERNATIVE = "requestDatasetAlternative"   # search again with a preference (up to 2 times)
+    FIND_MODELS = "findModels"                     # look for pretrained models and APIs (or retry)
+    REQUEST_OTHER_MODELS = "requestOtherModels"    # look for other models (up to 2 times)
+    APPROVE_MODELS = "approveModels"
     APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"
     GO_BACK = "goBack"
     ASK_GREY = "askGrey"

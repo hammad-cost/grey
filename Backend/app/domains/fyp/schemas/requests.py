@@ -111,3 +111,8 @@ class ApproveTechnicalPlanRequest(BaseModel):
 class AcceptFeasibilityRequest(BaseModel):
     """Body for POST /projects/{workspace_id}/feasibility/accept — the id of the feasibility report."""
     report_id: str = Field(min_length=1)
+
+
+class ConfirmSupervisorReadyRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/supervisor-brief/confirm — the id of the supervisor brief."""
+    brief_id: str = Field(min_length=1)

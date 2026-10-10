@@ -15,6 +15,7 @@ from app.core.brain.schemas import (
     FYPDesignRun,
     ProblemRun,
     ProjectDefinitionRun,
+    ReadinessRun,
     ResearchRun,
     StoredEvidenceSource,
     StoredProblemCandidate,
@@ -24,6 +25,7 @@ from app.domains.fyp.workflows.ai_strategy.view import AIStrategyView
 from app.domains.fyp.workflows.dataset_discovery.view import DatasetView
 from app.domains.fyp.workflows.feasibility.view import FeasibilityView
 from app.domains.fyp.workflows.model_selection.view import ModelView
+from app.domains.fyp.workflows.supervisor_readiness.view import SupervisorBriefView
 from app.domains.fyp.workflows.technical_plan.view import TechnicalPlanView
 from app.domains.fyp.workflows.technology_plan.view import TechnologyView
 from app.domains.fyp.workflows.fyp_design.view import FYPDesignView
@@ -107,3 +109,11 @@ class FeasibilityResponse(BaseModel):
     workflow_state: WorkflowState
     feasibility: FeasibilityView | None = None    # None until the technical plan is approved
     latest_run: FeasibilityRun | None = None
+
+
+class SupervisorBriefResponse(BaseModel):
+    """Body for GET /projects/{workspace_id}/supervisor-brief (Release 0.13)."""
+    workspace_id: str
+    workflow_state: WorkflowState
+    supervisor_brief: SupervisorBriefView | None = None   # None until feasibility is accepted
+    latest_run: ReadinessRun | None = None

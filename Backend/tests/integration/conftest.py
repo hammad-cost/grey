@@ -25,6 +25,7 @@ from app.api.fyp_design import get_fyp_design_graph
 from app.api.models import get_model_graph
 from app.api.project_definition import get_project_definition_graph
 from app.api.projects import get_discovery_graph
+from app.api.supervisor import get_supervisor_readiness_graph
 from app.api.technology import get_technology_graph
 from app.core.brain.database import get_session, get_session_factory
 from app.core.brain.models import Base
@@ -47,6 +48,8 @@ from app.domains.fyp.workflows.model_selection import build_model_graph
 from app.domains.fyp.workflows.model_selection import runner as model_runner
 from app.domains.fyp.workflows.project_definition import build_project_definition_graph
 from app.domains.fyp.workflows.project_definition import runner as definition_runner
+from app.domains.fyp.workflows.supervisor_readiness import build_supervisor_readiness_graph
+from app.domains.fyp.workflows.supervisor_readiness import runner as readiness_runner
 from app.domains.fyp.workflows.technical_plan import build_technical_plan_graph
 from app.domains.fyp.workflows.technical_plan import runner as architecture_runner
 from app.domains.fyp.workflows.technology_plan import build_technology_graph
@@ -83,6 +86,7 @@ async def client():
     test_technology_graph = build_technology_graph(MemorySaver(), skills=skills)
     test_technical_plan_graph = build_technical_plan_graph(MemorySaver(), skills=skills)
     test_feasibility_graph = build_feasibility_graph(MemorySaver(), skills=skills)
+    test_readiness_graph = build_supervisor_readiness_graph(MemorySaver(), skills=skills)
 
     # --- Apply overrides ---
     app.dependency_overrides[get_session] = override_get_session
@@ -96,6 +100,7 @@ async def client():
     app.dependency_overrides[get_technology_graph] = lambda: test_technology_graph
     app.dependency_overrides[get_technical_plan_graph] = lambda: test_technical_plan_graph
     app.dependency_overrides[get_feasibility_graph] = lambda: test_feasibility_graph
+    app.dependency_overrides[get_supervisor_readiness_graph] = lambda: test_readiness_graph
     research_runner._active_research.clear()
     problem_runner._active_extractions.clear()
     fyp_runner._active_designs.clear()
@@ -106,6 +111,7 @@ async def client():
     technology_runner._active_plans.clear()
     architecture_runner._active_designs.clear()
     feasibility_runner._active_assessments.clear()
+    readiness_runner._active_briefs.clear()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -125,4 +131,5 @@ async def client():
     technology_runner._active_plans.clear()
     architecture_runner._active_designs.clear()
     feasibility_runner._active_assessments.clear()
+    readiness_runner._active_briefs.clear()
     await engine.dispose()

@@ -11,6 +11,8 @@ from app.core.tools.search import SearchProvider
 from app.domains.fyp.skills.classify_area import ClassifyAreaSkill
 from app.domains.fyp.skills.classify_area.fake import install_fake_answers as install_fake_area_answers
 from app.domains.fyp.skills.define_project import DefineProjectSkill
+from app.domains.fyp.skills.design_architecture import DesignArchitectureSkill
+from app.domains.fyp.skills.design_architecture.fake import install_fake_answers as install_fake_architecture_answers
 from app.domains.fyp.skills.define_project.fake import install_fake_answers as install_fake_definition_answers
 from app.domains.fyp.skills.design_fyp import DesignFYPSkill
 from app.domains.fyp.skills.design_fyp.fake import install_fake_answers as install_fake_design_answers
@@ -61,3 +63,5 @@ def register_fyp_skills(
         registry.register(FindModelsSkill(search, llm, max_searches=max_dataset_searches))
         install_fake_technology_answers(llm)
         registry.register(PlanTechnologySkill(llm))
+        install_fake_architecture_answers(llm)
+        registry.register(DesignArchitectureSkill(llm))

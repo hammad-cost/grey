@@ -19,7 +19,9 @@
  *   AI_STRATEGY        → AIStrategyCard (review: check again with a preference, approve)
  *   AI_STRATEGY_APPROVED → ApprovedAIStrategyCard + DatasetRecommendationCard (Grey looking for datasets)
  *   DATASET_DISCOVERY  → DatasetRecommendationCard (review: search again, select one of two datasets)
- *   DATASET_SELECTED   → SelectedDatasetCard (Release 0.8 ends here)
+ *   DATASET_SELECTED   → SelectedDatasetCard + ModelRecommendationCard (Grey looking for models)
+ *   MODEL_SELECTION    → ModelRecommendationCard (review: look for other models, approve)
+ *   MODELS_APPROVED    → ApprovedModelsCard (Release 0.9 ends here)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
@@ -31,7 +33,9 @@ import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
 import { DatasetRecommendationCard } from "@/domains/fyp/components/DatasetRecommendationCard";
 import { FunctionalAreaCard } from "@/domains/fyp/components/FunctionalAreaCard";
 import { FYPDirectionCard } from "@/domains/fyp/components/FYPDirectionCard";
+import { ApprovedModelsCard } from "@/domains/fyp/components/ApprovedModelsCard";
 import { IndustrySelector } from "@/domains/fyp/components/IndustrySelector";
+import { ModelRecommendationCard } from "@/domains/fyp/components/ModelRecommendationCard";
 import { ProblemOptions } from "@/domains/fyp/components/ProblemOptions";
 import { ProblemProgressCard } from "@/domains/fyp/components/ProblemProgressCard";
 import { ProjectDefinitionCard } from "@/domains/fyp/components/ProjectDefinitionCard";
@@ -43,6 +47,7 @@ import { SelectedProblemCard } from "@/domains/fyp/components/SelectedProblemCar
 const STAGES_WITH_OWN_PROGRESS = [
   "EVIDENCE_RESEARCH", "PROBLEM_OPTIONS", "PROBLEM_SELECTED", "AREA_CLASSIFICATION", "FYP_DESIGN",
   "APPROVED_FYP", "SCOPE", "SCOPE_APPROVED", "AI_STRATEGY", "AI_STRATEGY_APPROVED", "DATASET_DISCOVERY",
+  "DATASET_SELECTED", "MODEL_SELECTION",
 ];
 
 export default function Home() {
@@ -135,6 +140,12 @@ export default function Home() {
         <div className="flex flex-col gap-4 mt-4">
           <DatasetRecommendationCard />
           <SelectedDatasetCard />
+        </div>
+
+        {/* ── Pretrained models and APIs (Release 0.9) ────────────────────── */}
+        <div className="flex flex-col gap-4 mt-4">
+          <ModelRecommendationCard />
+          <ApprovedModelsCard />
         </div>
 
       </div>

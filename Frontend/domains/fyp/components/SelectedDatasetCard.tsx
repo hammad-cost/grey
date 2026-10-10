@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * SelectedDatasetCard — the end of Release 0.8.
+ * SelectedDatasetCard — the selected dataset (Release 0.8).
  *
  * Shown at the DATASET_SELECTED stage. Summarises the data the student
  * committed to: its name (a link for a public dataset), where it comes from,
@@ -41,8 +41,7 @@ export function SelectedDatasetCard() {
       )}
 
       <p className="mt-4 text-sm text-gray-400">
-        Saved to your Project Brain. Next, Grey will check pretrained models and APIs for your project (coming in a
-        future release).
+        Saved to your Project Brain. Next, Grey checks which pretrained models and APIs could help.
       </p>
     </section>
   );

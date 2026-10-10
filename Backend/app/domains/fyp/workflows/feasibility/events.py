@@ -116,7 +116,7 @@ class FeasibilityEventBuilder:
 
 
 def feasibility_accepted_event(workspace_id: str, view: FeasibilityView) -> GreyEvent:
-    """The student accepted the feasibility report. Release 0.12 ends here."""
+    """The student accepted the feasibility report. Next, Grey prepares the supervisor brief (Release 0.13)."""
     return build_event(
         type=EventType.FEASIBILITY_ACCEPTED,
         workspace_id=workspace_id,
@@ -125,5 +125,5 @@ def feasibility_accepted_event(workspace_id: str, view: FeasibilityView) -> Grey
         status=EventStatus.COMPLETE,
         data={"feasibility": view.model_dump(mode="json")},
         brain_patch={"workflow_state": WorkflowState.FEASIBILITY_ACCEPTED.value, **_view_patch(view)},
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.PREPARE_SUPERVISOR_BRIEF],
     )

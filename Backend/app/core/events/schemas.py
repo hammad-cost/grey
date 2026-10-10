@@ -101,9 +101,15 @@ class EventType(str, Enum):
     FEASIBILITY_FAILED = "feasibility_failed"
     FEASIBILITY_ACCEPTED = "feasibility_accepted"
 
+    # Release 0.13 — supervisor readiness. Safe activity only, never reasoning.
+    SUPERVISOR_BRIEF_STARTED = "supervisor_brief_started"
+    SUPERVISOR_BRIEF_PROGRESS = "supervisor_brief_progress"
+    SUPERVISOR_READINESS_READY = "supervisor_readiness_ready"   # name from the frontend blueprint
+    SUPERVISOR_BRIEF_FAILED = "supervisor_brief_failed"
+    SUPERVISOR_READY_CONFIRMED = "supervisor_ready_confirmed"
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
-    SUPERVISOR_READINESS_READY = "supervisor_readiness_ready"
     PROPOSAL_READY = "proposal_ready"
     BRAIN_UPDATED = "brain_updated"
     CHANGE_IMPACT_READY = "change_impact_ready"
@@ -157,6 +163,8 @@ class AllowedAction(str, Enum):
     REDESIGN_ARCHITECTURE = "redesignArchitecture" # make it simpler (up to 2 times)
     ASSESS_FEASIBILITY = "assessFeasibility"       # check whether the project is feasible (or retry)
     ACCEPT_FEASIBILITY = "acceptFeasibility"
+    PREPARE_SUPERVISOR_BRIEF = "prepareSupervisorBrief"   # readiness checks, summary, likely questions (or retry)
+    CONFIRM_SUPERVISOR_READY = "confirmSupervisorReady"
     APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"
     GO_BACK = "goBack"
     ASK_GREY = "askGrey"

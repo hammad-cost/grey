@@ -172,6 +172,7 @@ async def search_datasets(
     known: list[DatasetCandidate] | None = None,
     exclude_urls: set[str] | None = None,
     on_search=None,
+    is_wanted=is_dataset_page,
 ) -> DatasetSearchResult:
     """
     Run the searches and return the dataset pages found, best (earliest) first.
@@ -181,6 +182,8 @@ async def search_datasets(
     A failed search is skipped; if EVERY search fails and nothing is known,
     the last SearchProviderError is raised, so the caller can say "try again".
     `on_search(index, total)` is awaited before each search (for progress).
+    `is_wanted(url)` decides which pages are kept (dataset pages by default;
+    the Release 0.9 model search passes its own filter).
     """
     exclude = {normalize_url(u) for u in exclude_urls or set()}
     found = DatasetSearchResult()
@@ -204,7 +207,7 @@ async def search_datasets(
             last_error = error
             continue
         for result in results:
-            if is_dataset_page(result.url):
+            if is_wanted(result.url):
                 keep(_candidate(result, query, search.name))
 
     for candidate in known or []:

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.core.brain.schemas import (
     AIStrategyPreference,
+    ArchitecturePreference,
     DatasetChoice,
     DatasetPreference,
     FYPAdjustment,
@@ -94,4 +95,14 @@ class ReplanTechnologyRequest(BaseModel):
 
 class ApproveTechnologyRequest(BaseModel):
     """Body for POST /projects/{workspace_id}/technology/approve — the id of the technology plan."""
+    plan_id: str = Field(min_length=1)
+
+
+class RedesignArchitectureRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/architecture/redesign."""
+    preference: ArchitecturePreference     # "simpler"
+
+
+class ApproveTechnicalPlanRequest(BaseModel):
+    """Body for POST /projects/{workspace_id}/architecture/approve — the id of the technical plan."""
     plan_id: str = Field(min_length=1)

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.brain.schemas import (
     AIStrategyRun,
+    ArchitectureRun,
     DatasetRun,
     ModelRun,
     TechnologyRun,
@@ -21,6 +22,7 @@ from app.core.brain.schemas import (
 from app.domains.fyp.workflows.ai_strategy.view import AIStrategyView
 from app.domains.fyp.workflows.dataset_discovery.view import DatasetView
 from app.domains.fyp.workflows.model_selection.view import ModelView
+from app.domains.fyp.workflows.technical_plan.view import TechnicalPlanView
 from app.domains.fyp.workflows.technology_plan.view import TechnologyView
 from app.domains.fyp.workflows.fyp_design.view import FYPDesignView
 from app.domains.fyp.workflows.project_definition.view import ProjectDefinitionView
@@ -87,3 +89,11 @@ class TechnologyResponse(BaseModel):
     workflow_state: WorkflowState
     technology: TechnologyView | None = None      # None until the model plan is approved
     latest_run: TechnologyRun | None = None
+
+
+class TechnicalPlanResponse(BaseModel):
+    """Body for GET /projects/{workspace_id}/architecture (Release 0.11)."""
+    workspace_id: str
+    workflow_state: WorkflowState
+    technical_plan: TechnicalPlanView | None = None   # None until the technology plan is approved
+    latest_run: ArchitectureRun | None = None

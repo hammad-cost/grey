@@ -18,6 +18,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.ai_strategy import get_ai_strategy_graph
+from app.api.architecture import get_technical_plan_graph
 from app.api.datasets import get_dataset_graph
 from app.api.fyp_design import get_fyp_design_graph
 from app.api.models import get_model_graph
@@ -43,6 +44,8 @@ from app.domains.fyp.workflows.model_selection import build_model_graph
 from app.domains.fyp.workflows.model_selection import runner as model_runner
 from app.domains.fyp.workflows.project_definition import build_project_definition_graph
 from app.domains.fyp.workflows.project_definition import runner as definition_runner
+from app.domains.fyp.workflows.technical_plan import build_technical_plan_graph
+from app.domains.fyp.workflows.technical_plan import runner as architecture_runner
 from app.domains.fyp.workflows.technology_plan import build_technology_graph
 from app.domains.fyp.workflows.technology_plan import runner as technology_runner
 from main import app
@@ -75,6 +78,7 @@ async def client():
     test_dataset_graph = build_dataset_graph(MemorySaver(), skills=skills)
     test_model_graph = build_model_graph(MemorySaver(), skills=skills)
     test_technology_graph = build_technology_graph(MemorySaver(), skills=skills)
+    test_technical_plan_graph = build_technical_plan_graph(MemorySaver(), skills=skills)
 
     # --- Apply overrides ---
     app.dependency_overrides[get_session] = override_get_session
@@ -86,6 +90,7 @@ async def client():
     app.dependency_overrides[get_dataset_graph] = lambda: test_dataset_graph
     app.dependency_overrides[get_model_graph] = lambda: test_model_graph
     app.dependency_overrides[get_technology_graph] = lambda: test_technology_graph
+    app.dependency_overrides[get_technical_plan_graph] = lambda: test_technical_plan_graph
     research_runner._active_research.clear()
     problem_runner._active_extractions.clear()
     fyp_runner._active_designs.clear()
@@ -94,6 +99,7 @@ async def client():
     dataset_runner._active_searches.clear()
     model_runner._active_searches.clear()
     technology_runner._active_plans.clear()
+    architecture_runner._active_designs.clear()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -111,4 +117,5 @@ async def client():
     dataset_runner._active_searches.clear()
     model_runner._active_searches.clear()
     technology_runner._active_plans.clear()
+    architecture_runner._active_designs.clear()
     await engine.dispose()

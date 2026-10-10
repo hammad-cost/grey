@@ -57,6 +57,7 @@ const MODEL_END_EVENTS = ["models_ready", "model_search_failed"];
 const TECHNOLOGY_END_EVENTS = ["technology_plan_ready", "technology_plan_failed"];
 const ARCHITECTURE_END_EVENTS = ["architecture_ready", "architecture_failed"];
 const FEASIBILITY_END_EVENTS = ["feasibility_ready", "feasibility_failed"];
+const SUPERVISOR_END_EVENTS = ["supervisor_readiness_ready", "supervisor_brief_failed"];
 
 /**
  * POST to a streaming endpoint (with an optional JSON body) and apply every
@@ -649,14 +650,51 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  /** Accept the feasibility report. Release 0.12 ends here. */
+  /**
+   * Accept the feasibility report, then — when the backend says so
+   * (feasibility_accepted allows "prepareSupervisorBrief") — prepare the
+   * supervisor brief straight away (Release 0.13).
+   */
   const acceptFeasibility = useCallback(
     (reportId: string) =>
       run(async () => {
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${workspaceId}/feasibility/accept`,
+          { method: "POST", body: JSON.stringify({ report_id: reportId }) }
+        );
+        applyEvent(event);
+        if (!event.allowed_actions.includes(Actions.PREPARE_SUPERVISOR_BRIEF)) return event;
+
+        return runEventStream(
+          `/projects/${workspaceId}/supervisor-brief`, SUPERVISOR_END_EVENTS, applyEvent, "Preparing your supervisor brief"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Prepare the supervisor brief (e.g. "Try again" after supervisor_brief_failed). */
+  const prepareSupervisorBrief = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/supervisor-brief`, SUPERVISOR_END_EVENTS, applyEvent,
+          "Preparing your supervisor brief"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Confirm the student is ready for the supervisor. Release 0.13 ends here. */
+  const confirmSupervisorReady = useCallback(
+    (briefId: string) =>
+      run(async () => {
         if (!state.workspaceId) throw new Error("No active project.");
         const event = await apiFetch<GreyEvent>(
-          `/projects/${state.workspaceId}/feasibility/accept`,
-          { method: "POST", body: JSON.stringify({ report_id: reportId }) }
+          `/projects/${state.workspaceId}/supervisor-brief/confirm`,
+          { method: "POST", body: JSON.stringify({ brief_id: briefId }) }
         );
         applyEvent(event);
         return event;
@@ -694,5 +732,7 @@ export function useGreyActions() {
     approveTechnicalPlan,
     assessFeasibility,
     acceptFeasibility,
+    prepareSupervisorBrief,
+    confirmSupervisorReady,
   };
 }

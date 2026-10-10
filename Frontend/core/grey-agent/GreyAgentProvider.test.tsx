@@ -455,6 +455,44 @@ const feasibilityAccepted = feasibilityEvent("feasibility_accepted", {
   brain_patch: { workflow_state: "FEASIBILITY_ACCEPTED", feasibility_status: "accepted" },
 });
 
+const feasibilityAcceptedBriefNext = feasibilityEvent("feasibility_accepted", {
+  stage: "FEASIBILITY_ACCEPTED",
+  status: "complete",
+  brain_patch: { workflow_state: "FEASIBILITY_ACCEPTED", feasibility_status: "accepted" },
+  allowed_actions: ["prepareSupervisorBrief"],
+});
+
+function briefEvent(type: string, extra: Partial<GreyEvent> = {}): GreyEvent {
+  return {
+    type,
+    workspace_id: "w_123",
+    domain: "fyp",
+    workflow: "supervisor_readiness",
+    stage: "FEASIBILITY_ACCEPTED",
+    status: "running",
+    data: { label: `${type} label`, completed_steps: 1, total_steps: 4 },
+    brain_patch: {},
+    allowed_actions: [],
+    ...extra,
+  };
+}
+
+const briefStarted = briefEvent("supervisor_brief_started", { brain_patch: { supervisor_brief_status: "running" } });
+const briefReady = briefEvent("supervisor_readiness_ready", {
+  stage: "SUPERVISOR_READINESS",
+  status: "awaiting_user",
+  brain_patch: {
+    workflow_state: "SUPERVISOR_READINESS", supervisor_brief_id: "b-1", supervisor_brief_status: "draft",
+    supervisor_attention_count: 0,
+  },
+  allowed_actions: ["confirmSupervisorReady"],
+});
+const supervisorReady = briefEvent("supervisor_ready_confirmed", {
+  stage: "SUPERVISOR_READY",
+  status: "complete",
+  brain_patch: { workflow_state: "SUPERVISOR_READY", supervisor_brief_status: "confirmed" },
+});
+
 /** A streamed reply with these events, one JSON per line. */
 function streamOf(...events: GreyEvent[]) {
   return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
@@ -470,6 +508,7 @@ function Probe() {
     checkAINeed, recheckAIStrategy, approveAIStrategy, findDatasets, requestDatasetAlternative, selectDataset,
     findModels, requestOtherModels, approveModels, planTechnology, replanTechnology, approveTechnology,
     designArchitecture, redesignArchitecture, approveTechnicalPlan, assessFeasibility, acceptFeasibility,
+    prepareSupervisorBrief, confirmSupervisorReady,
   } = useGreyActions();
   return (
     <>
@@ -503,6 +542,8 @@ function Probe() {
       <button onClick={() => approveTechnicalPlan("a-1").catch(() => {})}>approve technical plan</button>
       <button onClick={() => assessFeasibility().catch(() => {})}>assess feasibility</button>
       <button onClick={() => acceptFeasibility("f-1").catch(() => {})}>accept feasibility</button>
+      <button onClick={() => prepareSupervisorBrief().catch(() => {})}>prepare brief</button>
+      <button onClick={() => confirmSupervisorReady("b-1").catch(() => {})}>confirm ready</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -1329,5 +1370,40 @@ describe("GreyAgentProvider", () => {
     await waitFor(() => expect(readState().currentStage).toBe("FEASIBILITY_ACCEPTED"));
     expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/feasibility\/accept$/);
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ report_id: "f-1" });
+  });
+
+  it("acceptFeasibility prepares the supervisor brief straight away when the backend allows it", async () => {
+    replyWith(projectCreated);
+    replyWith(feasibilityAcceptedBriefNext);
+    fetchMock.mockResolvedValueOnce(streamOf(briefStarted, briefReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("accept feasibility"));
+    await waitFor(() => expect(readState().currentStage).toBe("SUPERVISOR_READINESS"));
+
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/supervisor-brief$/);
+    expect(readState().brainSummary).toMatchObject({
+      feasibilityStatus: "accepted", supervisorBriefId: "b-1", supervisorBriefStatus: "draft", supervisorAttentionCount: 0,
+    });
+  });
+
+  it("prepareSupervisorBrief retries and confirmSupervisorReady finishes at SUPERVISOR_READY", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(briefStarted, briefReady));
+    replyWith(supervisorReady);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("prepare brief"));
+    await waitFor(() => expect(readState().currentStage).toBe("SUPERVISOR_READINESS"));
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/supervisor-brief$/);
+
+    fireEvent.click(screen.getByText("confirm ready"));
+    await waitFor(() => expect(readState().currentStage).toBe("SUPERVISOR_READY"));
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/supervisor-brief\/confirm$/);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ brief_id: "b-1" });
   });
 });

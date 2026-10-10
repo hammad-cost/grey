@@ -81,6 +81,11 @@ export type WorkspaceBrainSummary = {
   feasibilityReportId?: string;
   /** "high" | "medium" | "low" — computed by the backend. */
   feasibilityOverall?: string;
+  /** Supervisor readiness (Release 0.13): "running" | "draft" | "confirmed" | "failed". */
+  supervisorBriefStatus?: string;
+  supervisorBriefId?: string;
+  /** How many readiness checks need attention (0 = ready). */
+  supervisorAttentionCount?: number;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -171,6 +176,8 @@ export const Actions = {
   APPROVE_TECHNICAL_PLAN: "approveTechnicalPlan",
   ASSESS_FEASIBILITY: "assessFeasibility",
   ACCEPT_FEASIBILITY: "acceptFeasibility",
+  PREPARE_SUPERVISOR_BRIEF: "prepareSupervisorBrief",
+  CONFIRM_SUPERVISOR_READY: "confirmSupervisorReady",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

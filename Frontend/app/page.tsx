@@ -23,14 +23,18 @@
  *   MODEL_SELECTION    → ModelRecommendationCard (review: look for other models, approve)
  *   MODELS_APPROVED    → ApprovedModelsCard + TechnologyPlanCard (Grey planning the technology)
  *   TECHNOLOGY_PLAN    → TechnologyPlanCard (review: make it simpler, approve)
- *   TECHNOLOGY_APPROVED → ApprovedTechnologyCard (Release 0.10 ends here)
+ *   TECHNOLOGY_APPROVED → ApprovedTechnologyCard + ArchitectureCard (Grey designing the architecture)
+ *   ARCHITECTURE       → ArchitectureCard (review: make it simpler, approve the technical plan)
+ *   TECHNICAL_PLAN_APPROVED → ApprovedTechnicalPlanCard (Release 0.11 ends here)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
 import { AIStrategyCard } from "@/domains/fyp/components/AIStrategyCard";
 import { ApprovedAIStrategyCard } from "@/domains/fyp/components/ApprovedAIStrategyCard";
+import { ArchitectureCard } from "@/domains/fyp/components/ArchitectureCard";
 import { ApprovedFYPCard } from "@/domains/fyp/components/ApprovedFYPCard";
 import { ApprovedScopeCard } from "@/domains/fyp/components/ApprovedScopeCard";
+import { ApprovedTechnicalPlanCard } from "@/domains/fyp/components/ApprovedTechnicalPlanCard";
 import { ApprovedTechnologyCard } from "@/domains/fyp/components/ApprovedTechnologyCard";
 import { BranchSelector } from "@/domains/fyp/components/BranchSelector";
 import { DatasetRecommendationCard } from "@/domains/fyp/components/DatasetRecommendationCard";
@@ -52,6 +56,7 @@ const STAGES_WITH_OWN_PROGRESS = [
   "EVIDENCE_RESEARCH", "PROBLEM_OPTIONS", "PROBLEM_SELECTED", "AREA_CLASSIFICATION", "FYP_DESIGN",
   "APPROVED_FYP", "SCOPE", "SCOPE_APPROVED", "AI_STRATEGY", "AI_STRATEGY_APPROVED", "DATASET_DISCOVERY",
   "DATASET_SELECTED", "MODEL_SELECTION", "MODELS_APPROVED", "TECHNOLOGY_PLAN",
+  "TECHNOLOGY_APPROVED", "ARCHITECTURE",
 ];
 
 export default function Home() {
@@ -156,6 +161,12 @@ export default function Home() {
         <div className="flex flex-col gap-4 mt-4">
           <TechnologyPlanCard />
           <ApprovedTechnologyCard />
+        </div>
+
+        {/* ── Architecture and evaluation plan (Release 0.11) ─────────────── */}
+        <div className="flex flex-col gap-4 mt-4">
+          <ArchitectureCard />
+          <ApprovedTechnicalPlanCard />
         </div>
 
       </div>

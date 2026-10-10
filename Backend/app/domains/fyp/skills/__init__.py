@@ -22,6 +22,8 @@ from app.domains.fyp.skills.find_datasets import FindDatasetsSkill
 from app.domains.fyp.skills.find_datasets.fake import install_fake_answers as install_fake_dataset_answers
 from app.domains.fyp.skills.find_models import FindModelsSkill
 from app.domains.fyp.skills.find_models.fake import install_fake_answers as install_fake_model_answers
+from app.domains.fyp.skills.generate_proposal import GenerateProposalSkill
+from app.domains.fyp.skills.generate_proposal.fake import install_fake_answers as install_fake_proposal_answers
 from app.domains.fyp.skills.plan_technology import PlanTechnologySkill
 from app.domains.fyp.skills.prepare_supervisor_brief import PrepareSupervisorBriefSkill
 from app.domains.fyp.skills.prepare_supervisor_brief.fake import install_fake_answers as install_fake_brief_answers
@@ -73,3 +75,5 @@ def register_fyp_skills(
         registry.register(AssessFeasibilitySkill(llm))
         install_fake_brief_answers(llm)
         registry.register(PrepareSupervisorBriefSkill(llm))
+        install_fake_proposal_answers(llm)
+        registry.register(GenerateProposalSkill(llm))

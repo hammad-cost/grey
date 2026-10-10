@@ -6,7 +6,8 @@ Project Brain tables (workspace_brain, research_run, evidence_source,
 problem_run, problem_candidate, problem_evidence, functional_area,
 fyp_design_run, fyp_design, project_definition_run, project_definition,
 scope_item, ai_strategy_run, ai_strategy, dataset_run, dataset_plan, model_run, model_plan,
-technology_run, technology_plan, architecture_run, technical_plan).
+technology_run, technology_plan, architecture_run, technical_plan,
+feasibility_run, feasibility_report).
 Everything else (API routes, workflows, skills) calls this repository —
 they never touch the database directly.
 
@@ -27,6 +28,8 @@ from app.core.brain.models import (
     DatasetPlanRecord,
     DatasetRunRecord,
     EvidenceSourceRecord,
+    FeasibilityReportRecord,
+    FeasibilityRunRecord,
     FunctionalAreaRecord,
     ModelPlanRecord,
     ModelRunRecord,
@@ -46,7 +49,7 @@ from app.core.brain.models import (
 )
 from app.core.brain.ai_strategy_rules import check_strategy, recheck_problem
 from app.core.brain.dataset_rules import check_plan, research_problem
-from app.core.brain import architecture_rules, model_rules, technology_rules
+from app.core.brain import architecture_rules, feasibility_rules, model_rules, technology_rules
 from app.core.brain.ai_strategy_rules import uses_ai
 from app.core.brain.schemas import (
     MAX_AI_STRATEGY_RECHECKS,
@@ -106,6 +109,11 @@ from app.core.brain.schemas import (
     StoredModelPlan,
     StoredTechnologyPlan,
     StoredTechnicalPlan,
+    StoredFeasibilityReport,
+    FeasibilityReport,
+    FeasibilityRun,
+    FeasibilityRunStatus,
+    FeasibilityStatus,
     ArchitecturePreference,
     ArchitectureRun,
     ArchitectureRunStatus,
@@ -150,6 +158,9 @@ STALE_TECHNOLOGY_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for technical plans (Release 0.11).
 STALE_ARCHITECTURE_RUN_AFTER = timedelta(minutes=10)
+
+# The same rule for feasibility analyses (Release 0.12).
+STALE_FEASIBILITY_RUN_AFTER = timedelta(minutes=10)
 
 # The same rule for project definition runs (Release 0.6).
 STALE_PROJECT_DEFINITION_RUN_AFTER = timedelta(minutes=10)
@@ -225,6 +236,14 @@ class ArchitectureRunAlreadyRunningError(Exception):
 
 class ArchitectureError(ValueError):
     """The architecture step isn't allowed now (wrong stage, no redesigns left, …)."""
+
+
+class FeasibilityRunAlreadyRunningError(Exception):
+    """A feasibility analysis is already running for this project."""
+
+
+class FeasibilityError(ValueError):
+    """The feasibility step isn't allowed now."""
 
 
 class FYPDesignError(ValueError):
@@ -388,6 +407,8 @@ class WorkspaceBrainRepository:
         snapshot.technology_run = await self.get_latest_technology_run(record.workspace_id)
         snapshot.technical_plan = await self.get_technical_plan(record.workspace_id)
         snapshot.architecture_run = await self.get_latest_architecture_run(record.workspace_id)
+        snapshot.feasibility_report = await self.get_feasibility_report(record.workspace_id)
+        snapshot.feasibility_run = await self.get_latest_feasibility_run(record.workspace_id)
         return snapshot
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -2567,3 +2588,177 @@ class WorkspaceBrainRepository:
         await self._session.commit()
         await self._session.refresh(record)
         return self._to_stored_technical_plan(record)
+
+    # ── Feasibility analysis (Release 0.12) ───────────────────────────────────
+
+    async def _feasibility_record(self, workspace_id: str) -> FeasibilityReportRecord | None:
+        result = await self._session.execute(
+            select(FeasibilityReportRecord).where(FeasibilityReportRecord.workspace_id == workspace_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _latest_feasibility_run_record(self, workspace_id: str) -> FeasibilityRunRecord | None:
+        result = await self._session.execute(
+            select(FeasibilityRunRecord)
+            .where(FeasibilityRunRecord.workspace_id == workspace_id)
+            .order_by(FeasibilityRunRecord.started_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_feasibility_run_record(self, run_id: str) -> FeasibilityRunRecord:
+        run = await self._session.get(FeasibilityRunRecord, run_id)
+        if run is None:
+            raise ValueError(f"Feasibility run '{run_id}' not found.")
+        return run
+
+    @staticmethod
+    def _to_stored_feasibility(record: FeasibilityReportRecord) -> StoredFeasibilityReport:
+        return StoredFeasibilityReport(
+            id=record.id,
+            workspace_id=record.workspace_id,
+            technical_plan_id=record.technical_plan_id,
+            run_id=record.run_id,
+            status=FeasibilityStatus(record.status),
+            report=record.report,
+            created_at=record.created_at,
+            accepted_at=record.accepted_at,
+        )
+
+    async def get_feasibility_report(self, workspace_id: str) -> StoredFeasibilityReport | None:
+        """The feasibility report (draft or accepted), or None until Grey has assessed the project."""
+        record = await self._feasibility_record(workspace_id)
+        return self._to_stored_feasibility(record) if record else None
+
+    async def get_latest_feasibility_run(self, workspace_id: str) -> FeasibilityRun | None:
+        run = await self._latest_feasibility_run_record(workspace_id)
+        return FeasibilityRun.model_validate(run) if run else None
+
+    async def start_feasibility_run(self, workspace_id: str) -> FeasibilityRun:
+        """
+        Record that Grey has started the feasibility analysis. Allowed only at
+        TECHNICAL_PLAN_APPROVED with no report yet (a failed attempt can be retried).
+
+        Raises:
+            ValueError, FeasibilityError, FeasibilityRunAlreadyRunningError (unless the running one is stale).
+        """
+        workspace = await self._require_record(workspace_id)
+        technical = await self._technical_plan_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.TECHNICAL_PLAN_APPROVED.value
+            or technical is None
+            or technical.status != TechnicalPlanStatus.APPROVED.value
+        ):
+            raise FeasibilityError(
+                f"Grey checks feasibility only after the technical plan is approved (stage: {workspace.workflow_state})."
+            )
+        if await self._feasibility_record(workspace_id) is not None:
+            raise FeasibilityError("Grey has already checked the feasibility.")
+
+        latest = await self._latest_feasibility_run_record(workspace_id)
+        if latest is not None and latest.status == FeasibilityRunStatus.RUNNING.value:
+            age = datetime.now(timezone.utc) - _as_utc(latest.started_at)
+            if age < STALE_FEASIBILITY_RUN_AFTER:
+                raise FeasibilityRunAlreadyRunningError(
+                    f"Grey is already checking feasibility for workspace '{workspace_id}'."
+                )
+            latest.status = FeasibilityRunStatus.FAILED.value
+            latest.error = "Feasibility analysis did not finish (marked as stale)."
+            latest.completed_at = datetime.now(timezone.utc)
+
+        run = FeasibilityRunRecord(
+            workspace_id=workspace_id,
+            technical_plan_id=technical.id,
+            status=FeasibilityRunStatus.RUNNING.value,
+            started_at=datetime.now(timezone.utc),
+        )
+        self._session.add(run)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return FeasibilityRun.model_validate(run)
+
+    async def complete_feasibility_run(
+        self,
+        run_id: str,
+        report: FeasibilityReport,
+        *,
+        report_id: str | None = None,
+        provider: str,
+        model: str,
+        prompt_version: str,
+    ) -> StoredFeasibilityReport:
+        """
+        Save the feasibility report and move the project to FEASIBILITY, in one commit.
+
+        Raises:
+            ValueError:            the run isn't running, or the stage is wrong.
+            FeasibilityRuleError:  the report breaks a rule in feasibility_rules.py.
+        """
+        run = await self._require_feasibility_run_record(run_id)
+        if run.status != FeasibilityRunStatus.RUNNING.value:
+            raise ValueError(f"Feasibility run '{run_id}' is not running (status: {run.status}).")
+        feasibility_rules.check_report(report)
+        workspace = await self._require_record(run.workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.TECHNICAL_PLAN_APPROVED.value
+            or await self._feasibility_record(run.workspace_id) is not None
+        ):
+            raise ValueError(f"The feasibility report can't be saved now (stage: {workspace.workflow_state}).")
+        now = datetime.now(timezone.utc)
+        record = FeasibilityReportRecord(
+            id=report_id or str(uuid.uuid4()),
+            workspace_id=run.workspace_id,
+            technical_plan_id=run.technical_plan_id,
+            run_id=run.id,
+            status=FeasibilityStatus.DRAFT.value,
+            report=report.model_dump(mode="json"),
+            created_at=now,
+        )
+        self._session.add(record)
+        workspace.workflow_state = WorkflowState.FEASIBILITY.value
+        workspace.updated_at = now
+        run.status = FeasibilityRunStatus.COMPLETE.value
+        run.completed_at = now
+        run.provider = provider
+        run.model = model
+        run.prompt_version = prompt_version
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_feasibility(record)
+
+    async def fail_feasibility_run(self, run_id: str, error: str) -> FeasibilityRun:
+        """Mark a feasibility analysis attempt as failed."""
+        run = await self._require_feasibility_run_record(run_id)
+        run.status = FeasibilityRunStatus.FAILED.value
+        run.error = error
+        run.completed_at = datetime.now(timezone.utc)
+        await self._session.commit()
+        await self._session.refresh(run)
+        return FeasibilityRun.model_validate(run)
+
+    async def accept_feasibility(self, workspace_id: str, report_id: str) -> StoredFeasibilityReport:
+        """
+        Record that the student accepted the feasibility report. The project moves
+        to FEASIBILITY_ACCEPTED in the same commit.
+
+        Raises:
+            ValueError, FeasibilityError (no draft report, or `report_id` isn't this project's).
+        """
+        workspace = await self._require_record(workspace_id)
+        record = await self._feasibility_record(workspace_id)
+        if (
+            workspace.workflow_state != WorkflowState.FEASIBILITY.value
+            or record is None
+            or record.status != FeasibilityStatus.DRAFT.value
+        ):
+            raise FeasibilityError(f"There is no feasibility report to accept (stage: {workspace.workflow_state}).")
+        if record.id != report_id:
+            raise FeasibilityError(f"'{report_id}' is not this project's feasibility report.")
+        now = datetime.now(timezone.utc)
+        record.status = FeasibilityStatus.ACCEPTED.value
+        record.accepted_at = now
+        workspace.workflow_state = WorkflowState.FEASIBILITY_ACCEPTED.value
+        workspace.updated_at = now
+        await self._session.commit()
+        await self._session.refresh(record)
+        return self._to_stored_feasibility(record)

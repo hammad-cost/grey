@@ -23,6 +23,22 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 | 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | planned |
 | 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | planned |
 
+## Release 0.12 plan — Feasibility analysis (autonomous run, 2026-10-11)
+
+Scope: blueprint Step 21 (§32). Boundary: `TECHNICAL_PLAN_APPROVED → (assess) → FEASIBILITY (review) → FEASIBILITY_ACCEPTED`.
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | Brain: `feasibility_run`, `feasibility_report` (13 dimensions, main risks with mitigations, overall High / Medium / Low with reason); stage `FEASIBILITY_ACCEPTED`; `feasibility_rules.py` (all 13 dimensions once; overall computed in code); repository + snapshot | |
+| 2 | Skill `assess_feasibility`: **facts in plain code** (evidence strength from the problem's evidence tiers, data availability from the selected dataset, hardware and cost from the technology plan, evaluation possibility and demonstrability from the technical plan); **judgement by the LLM** (problem relevance, technical complexity, time, external dependencies, ethical / legal, risk, novelty) + 1–5 main risks with mitigations + summary; overall computed in code; checks; prompt; fake answers | |
+| 3 | `feasibility` workflow (assess → review interrupt: accept → END), runner, events, view; `technical_plan_approved` allows `assessFeasibility` | |
+| 4 | API: `POST /feasibility` (stream), `POST /feasibility/accept`, `GET /feasibility` | |
+| 5 | Frontend adapter: `assessFeasibility`, `acceptFeasibility`; auto-start after `approveTechnicalPlan` | |
+| 6 | `FeasibilityCard` (overall badge, the 13 dimensions, main risks), `AcceptedFeasibilityCard`; `feasibility.ts` | |
+| 7 | Docs + full verification + fake e2e + live Groq run | |
+
+Decisions: the overall rating is never the model's opinion — code computes it from the 13 levels (favourable 2 / moderate 1 / concern 0; 3+ concerns → Low; a concern on time or technical complexity caps it at Medium; average ≥ 1.5 → High, ≥ 1.0 → Medium, else Low); no re-assessment (it is an analysis of approved decisions, not a choice); a Low result shows a clear warning but can still be accepted (Grey can't go back to earlier stages yet); acceptance with confirm.
+
 ## Release 0.11 plan — System architecture and evaluation plan (autonomous run, 2026-10-11)
 
 Scope: blueprint Steps 19–20 (§30 System Architecture, §31 Evaluation Plan). Boundary: `TECHNOLOGY_APPROVED → (design) → ARCHITECTURE (review: ≤2 "make it simpler") → TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan` from the frontend blueprint). The `EVALUATION` stage enum stays unused: the evaluation plan is reviewed together with the architecture (one "technical plan").

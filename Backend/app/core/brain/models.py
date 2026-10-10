@@ -23,6 +23,8 @@ technology_run  — one row per technology plan or re-plan (Release 0.10).
 technology_plan — the stack and hardware plan, one per project.
 architecture_run — one row per technical plan or redesign (Release 0.11).
 technical_plan   — the architecture and evaluation plan, one per project.
+feasibility_run    — one row per feasibility analysis attempt (Release 0.12).
+feasibility_report — the feasibility report, one per project.
 
 Together they are the authoritative state of a student's FYP journey.
 Chat history and LangGraph runtime state are NOT stored here —
@@ -628,3 +630,43 @@ class TechnicalPlanRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class FeasibilityRunRecord(Base):
+    """One attempt at the feasibility analysis (Release 0.12)."""
+
+    __tablename__ = "feasibility_run"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), index=True
+    )
+    technical_plan_id: Mapped[str] = mapped_column(String, ForeignKey("technical_plan.id"))
+
+    status: Mapped[str] = mapped_column(String)                     # FeasibilityRunStatus value
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class FeasibilityReportRecord(Base):
+    """The feasibility report (Release 0.12). One per project."""
+
+    __tablename__ = "feasibility_report"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    workspace_id: Mapped[str] = mapped_column(
+        String, ForeignKey("workspace_brain.workspace_id"), unique=True, index=True
+    )
+    technical_plan_id: Mapped[str] = mapped_column(String, ForeignKey("technical_plan.id"))
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("feasibility_run.id"))
+    status: Mapped[str] = mapped_column(String)                     # FeasibilityStatus value
+
+    report: Mapped[dict] = mapped_column(JSON)                      # FeasibilityReport, always read as a whole
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

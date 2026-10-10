@@ -40,7 +40,8 @@ class WorkflowState(str, Enum):
     ARCHITECTURE = "ARCHITECTURE"
     EVALUATION = "EVALUATION"                      # not used: evaluation is reviewed with the architecture
     TECHNICAL_PLAN_APPROVED = "TECHNICAL_PLAN_APPROVED"   # Release 0.11 ends here: architecture + evaluation approved
-    FEASIBILITY = "FEASIBILITY"
+    FEASIBILITY = "FEASIBILITY"                    # Release 0.12: the student reviews the feasibility report
+    FEASIBILITY_ACCEPTED = "FEASIBILITY_ACCEPTED"  # Release 0.12 ends here: the student accepted it
     SUPERVISOR_READINESS = "SUPERVISOR_READINESS"
     PROPOSAL_GENERATION = "PROPOSAL_GENERATION"
     COMPLETE = "COMPLETE"
@@ -1070,6 +1071,104 @@ class ArchitectureRun(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Feasibility analysis (Release 0.12) ───────────────────────────────────────
+
+class FeasibilityDimension(str, Enum):
+    """The dimensions Grey checks (blueprint §32)."""
+    PROBLEM_RELEVANCE = "problem_relevance"
+    EVIDENCE_STRENGTH = "evidence_strength"
+    DATA_AVAILABILITY = "data_availability"
+    TECHNICAL_COMPLEXITY = "technical_complexity"
+    HARDWARE_REQUIREMENT = "hardware_requirement"
+    COST = "cost"
+    TIME = "time"
+    EVALUATION_POSSIBILITY = "evaluation_possibility"
+    EXTERNAL_DEPENDENCIES = "external_dependencies"
+    ETHICAL_LEGAL = "ethical_legal"
+    DEMONSTRABILITY = "demonstrability"
+    RISK = "risk"
+    NOVELTY = "novelty"
+
+
+class FeasibilityLevel(str, Enum):
+    """How well one dimension supports the project being feasible."""
+    FAVOURABLE = "favourable"
+    MODERATE = "moderate"
+    CONCERN = "concern"
+
+
+class OverallFeasibility(str, Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class AssessedBy(str, Enum):
+    FACTS = "facts"            # computed in plain code from the Project Brain
+    JUDGEMENT = "judgement"    # judged by the model from the approved decisions
+
+
+class DimensionAssessment(BaseModel):
+    dimension: FeasibilityDimension
+    level: FeasibilityLevel
+    finding: str = Field(min_length=1)      # short, e.g. "Strong" or "Public dataset, good fit"
+    reason: str = Field(min_length=1)
+    assessed_by: AssessedBy
+
+
+class FeasibilityRisk(BaseModel):
+    risk: str = Field(min_length=1)
+    mitigation: str = Field(min_length=1)
+
+
+class FeasibilityReport(BaseModel):
+    """The feasibility analysis. The overall rating is computed in code (feasibility_rules.py)."""
+    summary: str = Field(min_length=1)
+    dimensions: list[DimensionAssessment] = Field(min_length=13, max_length=13)
+    main_risks: list[FeasibilityRisk] = Field(min_length=1, max_length=5)
+    overall: OverallFeasibility
+    overall_reason: str = Field(min_length=1)
+
+
+class FeasibilityStatus(str, Enum):
+    DRAFT = "draft"
+    ACCEPTED = "accepted"
+
+
+class StoredFeasibilityReport(BaseModel):
+    """The feasibility report as read back from the Project Brain."""
+    id: str
+    workspace_id: str
+    technical_plan_id: str
+    run_id: str
+    status: FeasibilityStatus
+    report: FeasibilityReport
+    created_at: datetime
+    accepted_at: datetime | None = None
+
+
+class FeasibilityRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class FeasibilityRun(BaseModel):
+    """One attempt at the feasibility analysis."""
+    id: str
+    workspace_id: str
+    technical_plan_id: str
+    status: FeasibilityRunStatus
+    started_at: datetime
+    completed_at: datetime | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Snapshot ──────────────────────────────────────────────────────────────────
 
 class WorkspaceBrainSnapshot(BaseModel):
@@ -1129,6 +1228,10 @@ class WorkspaceBrainSnapshot(BaseModel):
     # Architecture and evaluation plan (Release 0.11).
     technical_plan: StoredTechnicalPlan | None = None
     architecture_run: ArchitectureRun | None = None
+
+    # Feasibility analysis (Release 0.12).
+    feasibility_report: StoredFeasibilityReport | None = None
+    feasibility_run: FeasibilityRun | None = None
 
     created_at: datetime
     updated_at: datetime

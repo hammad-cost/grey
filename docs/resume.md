@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| Current release | **0.13 — Supervisor readiness: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.12 is complete (local, not pushed). |
-| Current step | 0.13 Step 1 (plan + Brain storage). |
-| Last completed step | 0.12 Step 8 — docs + verification: 1216 backend + 16 skipped, 228 frontend, type-check + build OK; fake e2e through a real server OK; live assess_feasibility run (Groq) OK. |
+| Current release | **0.14 — Proposal generation: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.13 is complete (local, not pushed). |
+| Current step | 0.14 Step 1 (plan + Brain storage). |
+| Last completed step | 0.13 Step 8 — docs + verification: 1245 backend + 17 skipped, 237 frontend, type-check + build OK; fake e2e through a real server OK; live prepare_supervisor_brief run (Groq) OK. |
 | Next action | Continue the roadmap below, release by release. After each release: full tests, fake e2e, docs + memory, then the next release. Commit locally; **do not push** (the student says "push"). |
 | Last commit | `git log --oneline -10`. `origin/main` = 0.8 docs push; everything after it is local. |
 
@@ -20,8 +20,8 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 | 0.10 | §27–29 Technology stack + hardware | `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED` | `plan_technology` (LLM) | ✅ done |
 | 0.11 | §30–31 Architecture + evaluation plan | `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan`) | `design_architecture` (LLM) | ✅ done |
 | 0.12 | §32 Feasibility | `FEASIBILITY` → `FEASIBILITY_ACCEPTED` | `assess_feasibility` (LLM rates dimensions; overall High/Medium/Low computed in code) | ✅ done |
-| 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | building |
-| 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | planned |
+| 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | ✅ done |
+| 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | building |
 
 ## Release 0.13 plan — Supervisor readiness (autonomous run, 2026-10-11)
 
@@ -30,13 +30,13 @@ Boundary: `FEASIBILITY_ACCEPTED → (prepare) → SUPERVISOR_READINESS (review) 
 
 | Step | What | Commit |
 |---|---|---|
-| 1 | Brain: `readiness_run`, `supervisor_brief` (readiness checks, summary, questions with talking points); stage `SUPERVISOR_READY`; repository + snapshot | |
-| 2 | Skill `prepare_supervisor_brief`: the 9 readiness checks **in plain code** from the Brain (pass / needs attention, with what to do); the 14-field summary **assembled in plain code** from approved decisions (no AI, so nothing can drift); the 10 blueprint questions fixed in code, **talking points (2–4 each) written by the LLM** from the approved decisions; checks; prompt; fake answers | |
-| 3 | `supervisor_readiness` workflow (prepare → review interrupt: confirm → END), runner, events, view; `feasibility_accepted` allows `prepareSupervisorBrief` | |
-| 4 | API: `POST /supervisor-brief` (stream), `POST /supervisor-brief/confirm`, `GET /supervisor-brief` | |
-| 5 | Frontend adapter: `prepareSupervisorBrief`, `confirmSupervisorReady`; auto-start after `acceptFeasibility` | |
-| 6 | `SupervisorReadinessCard` (checks, summary, questions with talking points), `SupervisorReadyCard`; `supervisorBrief.ts` | |
-| 7 | Docs + full verification + fake e2e + live Groq run | |
+| 1 | Brain: `readiness_run`, `supervisor_brief` (readiness checks, summary, questions with talking points); stage `SUPERVISOR_READY`; repository + snapshot | ✅ `a8bf462` |
+| 2 | Skill `prepare_supervisor_brief`: the 9 readiness checks **in plain code** from the Brain (pass / needs attention, with what to do); the 14-field summary **assembled in plain code** from approved decisions (no AI, so nothing can drift); the 10 blueprint questions fixed in code, **talking points (2–4 each) written by the LLM** from the approved decisions; checks; prompt; fake answers | ✅ `f28a83e` |
+| 3 | `supervisor_readiness` workflow (prepare → review interrupt: confirm → END), runner, events, view; `feasibility_accepted` allows `prepareSupervisorBrief` | ✅ `43e9870` |
+| 4 | API: `POST /supervisor-brief` (stream), `POST /supervisor-brief/confirm`, `GET /supervisor-brief` | ✅ `7be696a` |
+| 5 | Frontend adapter: `prepareSupervisorBrief`, `confirmSupervisorReady`; auto-start after `acceptFeasibility` | ✅ `9f6c342` |
+| 6 | `SupervisorReadinessCard` (checks, summary, questions with talking points), `SupervisorReadyCard`; `supervisorBrief.ts` | ✅ `ffdc692` |
+| 7 | Docs + full verification + fake e2e + live Groq run | ✅ `docs commit` |
 
 Decisions: checks that need attention can't send the student back (no `goBack` yet), so they are shown with what to do / what to discuss with the supervisor, and the student can still confirm; "ready" = every check passes. Summary fields come straight from the Brain (traceable). Confirm with a confirm step.
 

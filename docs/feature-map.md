@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-11 (Release 0.12)
+**Last updated:** 2026-10-11 (Release 0.13)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -31,6 +31,7 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F16 | Technology stack and hardware (decisions with reasons, hardware, simpler re-plans, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.10 |
 | F17 | Architecture and evaluation plan (pipeline, data flows, metrics, system tests, redesigns, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.11 |
 | F18 | Feasibility analysis (13 dimensions, computed overall, risks, acceptance) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.12 |
+| F19 | Supervisor readiness (checks, summary, likely questions, confirmation) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.13 |
 
 ---
 
@@ -361,3 +362,20 @@ After the technical plan is approved, Grey checks whether the project is realist
 | Skill | `assess_feasibility` — `facts.py`, `validation.py`, `skill.py`, `fake.py`; prompt `assess_feasibility.v1` |
 | Project Brain | `feasibility_run`, `feasibility_report`; stages `TECHNICAL_PLAN_APPROVED` → `FEASIBILITY` → `FEASIBILITY_ACCEPTED`; rules and the overall rating in `app/core/brain/feasibility_rules.py` |
 | Tests | Backend: `test_brain_feasibility.py` (16), `test_assess_feasibility_skill.py` (20), `test_feasibility_workflow.py` (6), `test_feasibility_api.py` (3), live `test_feasibility_live.py`. Frontend: adapter (2 new), `FeasibilityCard.test.tsx` (7) |
+
+---
+
+## F19 — Supervisor readiness (Release 0.13)
+
+After feasibility is accepted, Grey checks the student is ready for the supervisor (blueprint §33–35): readiness checks and summary in plain code, talking points by the model.
+
+| Layer | Detail |
+|---|---|
+| UI | `SupervisorReadinessCard` (checklist; Try again; readiness headline; ✓ / ! checks; summary with Copy summary; likely questions with talking points; **I'm ready for my supervisor** with confirm), `SupervisorReadyCard` — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.supervisor_brief`; `brainSummary` (`supervisorBriefStatus`, `supervisorBriefId`, `supervisorAttentionCount`); `Frontend/domains/fyp/supervisorBrief.ts` |
+| Adapter actions | `acceptFeasibility(id)` continues into `/supervisor-brief` when the backend allows `prepareSupervisorBrief`; `prepareSupervisorBrief()`, `confirmSupervisorReady(briefId)` |
+| API | `POST /projects/{id}/supervisor-brief` (stream; 409 feasibility not accepted / already prepared / running), `POST /projects/{id}/supervisor-brief/confirm {brief_id}`, `GET /projects/{id}/supervisor-brief` — `Backend/app/api/supervisor.py` |
+| Runner / workflow | `start_supervisor_brief()`, `SupervisorBriefSession.events()`, `confirm_supervisor_ready()`, `brief_input()`; graph `supervisor_readiness` — `Backend/app/domains/fyp/workflows/supervisor_readiness/` |
+| Skill | `prepare_supervisor_brief` — `readiness.py` (checks + summary in code), `validation.py`, `skill.py`, `fake.py`; prompt `prepare_supervisor_brief.v1` |
+| Project Brain | `readiness_run`, `supervisor_brief`; stages `FEASIBILITY_ACCEPTED` → `SUPERVISOR_READINESS` → `SUPERVISOR_READY`; rules in `app/core/brain/supervisor_rules.py` |
+| Tests | Backend: `test_brain_supervisor.py` (7), `test_prepare_supervisor_brief_skill.py` (14), `test_supervisor_readiness_workflow.py` (5), `test_supervisor_api.py` (3), live `test_supervisor_brief_live.py`. Frontend: adapter (2 new), `SupervisorReadinessCard.test.tsx` (7) |

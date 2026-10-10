@@ -260,6 +260,16 @@ approveTechnicalPlan → technical_plan_approved (allows assessFeasibility) → 
     feasibility_review ⏸  accept → FEASIBILITY_ACCEPTED → feasibility_accepted
 ```
 
+### Supervisor readiness path (Release 0.13)
+
+```
+acceptFeasibility → feasibility_accepted (allows prepareSupervisorBrief) → adapter POSTs /supervisor-brief
+  supervisor_readiness graph
+    prepare_brief → readiness.py (9 checks + 14-line summary, plain code) + model (talking points for 10 fixed questions)
+                  → validation + supervisor_rules → runner saves the brief (SUPERVISOR_READINESS) → supervisor_readiness_ready
+    readiness_review ⏸  confirm → SUPERVISOR_READY → supervisor_ready_confirmed
+```
+
 ## 3. Two kinds of state
 
 | | Project Brain | LangGraph state |

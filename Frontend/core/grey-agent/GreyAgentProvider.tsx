@@ -56,6 +56,9 @@ function toBrainSummary(patch: Record<string, unknown>): WorkspaceBrainSummary {
     technology_plan_id: "technologyPlanId",
     technical_plan_status: "technicalPlanStatus",
     technical_plan_id: "technicalPlanId",
+    feasibility_status: "feasibilityStatus",
+    feasibility_report_id: "feasibilityReportId",
+    feasibility_overall: "feasibilityOverall",
   } as const;
   const numberKeys = {
     evidence_count: "evidenceCount",

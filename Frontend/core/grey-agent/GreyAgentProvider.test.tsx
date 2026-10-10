@@ -418,6 +418,43 @@ const technicalPlanApproved = architectureEvent("technical_plan_approved", {
   brain_patch: { workflow_state: "TECHNICAL_PLAN_APPROVED", technical_plan_status: "approved" },
 });
 
+const technicalPlanApprovedAssessNext = architectureEvent("technical_plan_approved", {
+  stage: "TECHNICAL_PLAN_APPROVED",
+  status: "complete",
+  brain_patch: { workflow_state: "TECHNICAL_PLAN_APPROVED", technical_plan_status: "approved" },
+  allowed_actions: ["assessFeasibility"],
+});
+
+function feasibilityEvent(type: string, extra: Partial<GreyEvent> = {}): GreyEvent {
+  return {
+    type,
+    workspace_id: "w_123",
+    domain: "fyp",
+    workflow: "feasibility",
+    stage: "TECHNICAL_PLAN_APPROVED",
+    status: "running",
+    data: { label: `${type} label`, completed_steps: 1, total_steps: 4 },
+    brain_patch: {},
+    allowed_actions: [],
+    ...extra,
+  };
+}
+
+const feasibilityStarted = feasibilityEvent("feasibility_started", { brain_patch: { feasibility_status: "running" } });
+const feasibilityReady = feasibilityEvent("feasibility_ready", {
+  stage: "FEASIBILITY",
+  status: "awaiting_user",
+  brain_patch: {
+    workflow_state: "FEASIBILITY", feasibility_report_id: "f-1", feasibility_status: "draft", feasibility_overall: "high",
+  },
+  allowed_actions: ["acceptFeasibility"],
+});
+const feasibilityAccepted = feasibilityEvent("feasibility_accepted", {
+  stage: "FEASIBILITY_ACCEPTED",
+  status: "complete",
+  brain_patch: { workflow_state: "FEASIBILITY_ACCEPTED", feasibility_status: "accepted" },
+});
+
 /** A streamed reply with these events, one JSON per line. */
 function streamOf(...events: GreyEvent[]) {
   return { ok: true, body: fakeBody(events.map((e) => JSON.stringify(e) + "\n")) };
@@ -432,7 +469,7 @@ function Probe() {
     designFYP, adjustFYPDirection, approveFYPDirection, defineProject, moveScopeItem, approveScope,
     checkAINeed, recheckAIStrategy, approveAIStrategy, findDatasets, requestDatasetAlternative, selectDataset,
     findModels, requestOtherModels, approveModels, planTechnology, replanTechnology, approveTechnology,
-    designArchitecture, redesignArchitecture, approveTechnicalPlan,
+    designArchitecture, redesignArchitecture, approveTechnicalPlan, assessFeasibility, acceptFeasibility,
   } = useGreyActions();
   return (
     <>
@@ -464,6 +501,8 @@ function Probe() {
       <button onClick={() => designArchitecture().catch(() => {})}>design architecture</button>
       <button onClick={() => redesignArchitecture("simpler").catch(() => {})}>simpler architecture</button>
       <button onClick={() => approveTechnicalPlan("a-1").catch(() => {})}>approve technical plan</button>
+      <button onClick={() => assessFeasibility().catch(() => {})}>assess feasibility</button>
+      <button onClick={() => acceptFeasibility("f-1").catch(() => {})}>accept feasibility</button>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
       <p data-testid="error">{error ?? ""}</p>
     </>
@@ -1255,5 +1294,40 @@ describe("GreyAgentProvider", () => {
     await waitFor(() => expect(readState().currentStage).toBe("TECHNICAL_PLAN_APPROVED"));
     expect(fetchMock.mock.calls[3][0]).toMatch(/\/projects\/w_123\/architecture\/approve$/);
     expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toEqual({ plan_id: "a-1" });
+  });
+
+  it("approveTechnicalPlan checks feasibility straight away when the backend allows it", async () => {
+    replyWith(projectCreated);
+    replyWith(technicalPlanApprovedAssessNext);
+    fetchMock.mockResolvedValueOnce(streamOf(feasibilityStarted, feasibilityReady));
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("approve technical plan"));
+    await waitFor(() => expect(readState().currentStage).toBe("FEASIBILITY"));
+
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/feasibility$/);
+    expect(readState().brainSummary).toMatchObject({
+      technicalPlanStatus: "approved", feasibilityReportId: "f-1", feasibilityStatus: "draft", feasibilityOverall: "high",
+    });
+  });
+
+  it("assessFeasibility retries and acceptFeasibility finishes at FEASIBILITY_ACCEPTED", async () => {
+    replyWith(projectCreated);
+    fetchMock.mockResolvedValueOnce(streamOf(feasibilityStarted, feasibilityReady));
+    replyWith(feasibilityAccepted);
+    render(<GreyAgentProvider><Probe /></GreyAgentProvider>);
+
+    fireEvent.click(screen.getByText("start"));
+    await waitFor(() => expect(readState().workspaceId).toBe("w_123"));
+    fireEvent.click(screen.getByText("assess feasibility"));
+    await waitFor(() => expect(readState().currentStage).toBe("FEASIBILITY"));
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/projects\/w_123\/feasibility$/);
+
+    fireEvent.click(screen.getByText("accept feasibility"));
+    await waitFor(() => expect(readState().currentStage).toBe("FEASIBILITY_ACCEPTED"));
+    expect(fetchMock.mock.calls[2][0]).toMatch(/\/projects\/w_123\/feasibility\/accept$/);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ report_id: "f-1" });
   });
 });

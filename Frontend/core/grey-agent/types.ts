@@ -76,6 +76,11 @@ export type WorkspaceBrainSummary = {
   technicalPlanId?: string;
   architectureComponentCount?: number;
   architectureRedesignsLeft?: number;
+  /** Feasibility analysis (Release 0.12): "running" | "draft" | "accepted" | "failed". */
+  feasibilityStatus?: string;
+  feasibilityReportId?: string;
+  /** "high" | "medium" | "low" — computed by the backend. */
+  feasibilityOverall?: string;
 };
 
 // ── Grey UI state ──────────────────────────────────────────────────────────────
@@ -164,6 +169,8 @@ export const Actions = {
   DESIGN_ARCHITECTURE: "designArchitecture",
   REDESIGN_ARCHITECTURE: "redesignArchitecture",
   APPROVE_TECHNICAL_PLAN: "approveTechnicalPlan",
+  ASSESS_FEASIBILITY: "assessFeasibility",
+  ACCEPT_FEASIBILITY: "acceptFeasibility",
   ASK_GREY: "askGrey",
   GO_BACK: "goBack",
   GENERATE_PROPOSAL: "generateProposal",

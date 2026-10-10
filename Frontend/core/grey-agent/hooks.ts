@@ -56,6 +56,7 @@ const DATASET_END_EVENTS = ["dataset_options_ready", "dataset_search_failed"];
 const MODEL_END_EVENTS = ["models_ready", "model_search_failed"];
 const TECHNOLOGY_END_EVENTS = ["technology_plan_ready", "technology_plan_failed"];
 const ARCHITECTURE_END_EVENTS = ["architecture_ready", "architecture_failed"];
+const FEASIBILITY_END_EVENTS = ["feasibility_ready", "feasibility_failed"];
 
 /**
  * POST to a streaming endpoint (with an optional JSON body) and apply every
@@ -612,14 +613,50 @@ export function useGreyActions() {
     [run, applyEvent, state.workspaceId]
   );
 
-  /** Approve the architecture and evaluation plan (a mandatory decision). Release 0.11 ends here. */
+  /**
+   * Approve the architecture and evaluation plan (a mandatory decision), then — when
+   * the backend says so (technical_plan_approved allows "assessFeasibility") — check
+   * feasibility straight away (Release 0.12).
+   */
   const approveTechnicalPlan = useCallback(
     (planId: string) =>
       run(async () => {
+        const workspaceId = state.workspaceId;
+        if (!workspaceId) throw new Error("No active project.");
+        const event = await apiFetch<GreyEvent>(
+          `/projects/${workspaceId}/architecture/approve`,
+          { method: "POST", body: JSON.stringify({ plan_id: planId }) }
+        );
+        applyEvent(event);
+        if (!event.allowed_actions.includes(Actions.ASSESS_FEASIBILITY)) return event;
+
+        return runEventStream(
+          `/projects/${workspaceId}/feasibility`, FEASIBILITY_END_EVENTS, applyEvent, "Checking feasibility"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Check whether the project is feasible (e.g. "Try again" after feasibility_failed). */
+  const assessFeasibility = useCallback(
+    () =>
+      run(async () => {
+        if (!state.workspaceId) throw new Error("No active project.");
+        return runEventStream(
+          `/projects/${state.workspaceId}/feasibility`, FEASIBILITY_END_EVENTS, applyEvent, "Checking feasibility"
+        );
+      }),
+    [run, applyEvent, state.workspaceId]
+  );
+
+  /** Accept the feasibility report. Release 0.12 ends here. */
+  const acceptFeasibility = useCallback(
+    (reportId: string) =>
+      run(async () => {
         if (!state.workspaceId) throw new Error("No active project.");
         const event = await apiFetch<GreyEvent>(
-          `/projects/${state.workspaceId}/architecture/approve`,
-          { method: "POST", body: JSON.stringify({ plan_id: planId }) }
+          `/projects/${state.workspaceId}/feasibility/accept`,
+          { method: "POST", body: JSON.stringify({ report_id: reportId }) }
         );
         applyEvent(event);
         return event;
@@ -655,5 +692,7 @@ export function useGreyActions() {
     designArchitecture,
     redesignArchitecture,
     approveTechnicalPlan,
+    assessFeasibility,
+    acceptFeasibility,
   };
 }

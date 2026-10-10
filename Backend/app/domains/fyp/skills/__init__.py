@@ -18,6 +18,8 @@ from app.domains.fyp.skills.find_datasets import FindDatasetsSkill
 from app.domains.fyp.skills.find_datasets.fake import install_fake_answers as install_fake_dataset_answers
 from app.domains.fyp.skills.find_models import FindModelsSkill
 from app.domains.fyp.skills.find_models.fake import install_fake_answers as install_fake_model_answers
+from app.domains.fyp.skills.plan_technology import PlanTechnologySkill
+from app.domains.fyp.skills.plan_technology.fake import install_fake_answers as install_fake_technology_answers
 from app.domains.fyp.skills.plan_ai_strategy import PlanAIStrategySkill
 from app.domains.fyp.skills.plan_ai_strategy.fake import install_fake_answers as install_fake_strategy_answers
 from app.domains.fyp.skills.problem_extraction import ProblemExtractionSkill
@@ -57,3 +59,5 @@ def register_fyp_skills(
         registry.register(FindDatasetsSkill(search, llm, max_searches=max_dataset_searches))
         install_fake_model_answers(llm)
         registry.register(FindModelsSkill(search, llm, max_searches=max_dataset_searches))
+        install_fake_technology_answers(llm)
+        registry.register(PlanTechnologySkill(llm))

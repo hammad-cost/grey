@@ -1,12 +1,33 @@
 # Grey — Current State
 
-**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · 0.5 From problem to FYP (local, not yet run live) · 0.6 Project definition and scope (local, not yet run live) · **0.7 AI necessity check and AI strategy (complete, local commits, not pushed; skill live-tested with Groq)**
-**Last updated:** 2026-10-10
-**Scope:** FYP Companion, from "Start my FYP" to an approved AI strategy (stage `AI_STRATEGY_APPROVED`)
+**Release:** 0.1 (`9a025a1`) · 0.2 (`8cb7d3c`) · 0.3 + 0.4 (`ee2b0ac`, live-tested `38c2b9d`) · 0.4.1 Step 1 (`2708b85`, rest paused) · 0.5 From problem to FYP (local, not yet run live) · 0.6 Project definition and scope (local, not yet run live) · 0.7 AI necessity check and AI strategy (local, skill live-tested with Groq) · **0.8 Dataset discovery (complete, local commits, not pushed; skill live-tested with real search + Groq)**
+**Last updated:** 2026-10-11
+**Scope:** FYP Companion, from "Start my FYP" to a selected dataset (stage `DATASET_SELECTED`)
 
 This file records exactly what is implemented today — no more, no less.
 For the planned product, see `docs/specs/`. For how the pieces fit together, see `docs/architecture.md`.
 For the quick recovery checkpoint (current step, next action), see `docs/resume.md`.
+
+---
+
+## 0e. Release 0.8 (Dataset discovery) — what it added
+
+Product blueprint Step 15 (§24 Dataset Discovery, §25 Dataset Information). Grey recommends one primary dataset and one alternative — never a long list — and only public datasets that a search really found.
+
+| Step | Built | Location |
+|---|---|---|
+| 1 | Project Brain: `dataset_run` (each search or re-search: preference, status, searches used, **the dataset pages it found** as JSON, provider/model/prompt version, error), `dataset_plan` (one per project: primary + alternative as JSON, status `draft` / `selected`, `researches_used`, latest `preference`, `selected` = primary / alternative). New stage `DATASET_SELECTED` (review happens at the existing `DATASET_DISCOVERY`). Rules in plain code (`dataset_rules.py`): a public dataset must link to a page the search found; own data (synthetic / student-collected) has no link but says how to get it; primary ≠ alternative; "own data" makes own data the primary; "other options" never repeats a dataset shown before; at most **2** re-searches. | `Backend/app/core/brain/` |
+| 2 | Dataset search (plain code, no AI): 4 searches built from the branch, the AI task (or the problem's task when AI isn't used), the problem title and the industry, aimed at Kaggle / Hugging Face, UCI / Zenodo, official open-data portals, Papers with Code / GitHub; 3 differently worded ones for "other options"; none for "own data" (the pages found before are reused). Keeps only pages about **one** dataset (e.g. `kaggle.com/datasets/<owner>/<name>`; drops portal home / about / search / metrics pages — the 0.4 live-run problem), de-duplicates, skips pages shown before, at most 8 pages. A failed search is skipped; if every search fails, Grey says so. `DATASET_MAX_SEARCHES=6`. | `Backend/app/domains/fyp/skills/find_datasets/search.py` |
+| 3 | Skill **`find_datasets`** (profile `structured_reasoning`, via the Skill Registry, `SearchProvider` and `LLMGateway`): the model picks two options **by page number** (it never writes a link), and fills the §25 fields: name, size, main features, labels, license, why it fits, preparation, limitations, fit (good / partial), how to get own data. Plain-code checks: unknown choices or page numbers, empty texts, counts, **a size number or license that the page's own text doesn't state** (otherwise "Not stated — check the dataset page"), links, length, the dataset rules; one retry. Prompt `find_datasets.v1`; fake answers. | `Backend/app/domains/fyp/skills/find_datasets/`, `app/domains/fyp/prompts/find_datasets.py` |
+| 4 | Separate **`dataset_discovery`** LangGraph workflow: `find_datasets` → `dataset_review` (interrupt: select primary / alternative → END, research → back to `find_datasets`). Runner streams `dataset_search_started → dataset_search_progress ×4 → dataset_options_ready` (or `dataset_search_failed`); a failed re-search keeps the datasets, keeps the review open and isn't used up; restart-safe (the review, including the pages found, is rebuilt from the Brain). `ai_strategy_approved` now allows `findDatasets`. | `Backend/app/domains/fyp/workflows/dataset_discovery/` |
+| 5 | API: `POST /projects/{id}/datasets` (stream), `POST /projects/{id}/datasets/research` (stream, `{preference}`), `POST /projects/{id}/datasets/select` (`{plan_id, choice}`), `GET /projects/{id}/datasets`. API version 0.8.0. | `Backend/app/api/datasets.py` |
+| 6 | Frontend adapter: `approveAIStrategy()` continues straight into the dataset search when the backend allows `findDatasets`; `findDatasets()` (retry), `requestDatasetAlternative(preference)`, `selectDataset(planId, choice)`; `brainSummary` gains `datasetStatus`, `datasetPlanId`, `datasetResearchesLeft`, `datasetSelected`. | `Frontend/core/grey-agent/` |
+| 7 | UI: `DatasetRecommendationCard` (live checklist; failure + Try again; review: what the data is for, "Grey looked at N dataset pages from M searches", the primary and the alternative side by side — name linking to the found page, kind · source · fit, why it fits, how to get it (own data), size, labels, license, main features, preparation needed, limitations — **Use this dataset** on each with a confirm step; the allowed re-search buttons with "N of 2 new searches left"; **Sample data** badge for mock pages), `SelectedDatasetCard`. Data read safely by `domains/fyp/datasets.ts`. | `Frontend/domains/fyp/`, `app/page.tsx` |
+| 8 | Docs + full verification; fake-mode end-to-end run through a real server (start → … → approve AI strategy → dataset search → second first-search refused 409 → "own data" re-search (no new searches) → repeat refused 409 → "other options" re-search (nothing shown before) → third refused 409 → unknown preference 422 → wrong plan id 409 → select the alternative → late re-search / second selection 409); **one live run of the skill with real search + Groq** (`tests/live/test_datasets_live.py`), no rejected replies — see known issue 12. | `docs/`, `Backend/tests/live/` |
+
+**Behaviour changes vs 0.7:** `ai_strategy_approved` allows `findDatasets` (was none), and the frontend starts the dataset search automatically after the student approves the AI strategy. The approved-AI-strategy card's footer now says Grey looks for datasets next.
+
+Decisions (the student accepted Claude's recommendations: "do what look best for you"): real search; projects without AI still get data "to build, test and demonstrate the system"; no free-text requests; snippets only (no page reading, no Kaggle / Hugging Face APIs yet). Changed while building: instead of a separate "swap" button, the student simply selects the primary **or** the alternative (`selectDataset`, as in the frontend blueprint), and the stage that ends 0.8 is called `DATASET_SELECTED`.
 
 ---
 
@@ -124,10 +145,13 @@ The LLM runs in **fake mode by default** (no key, no cost); with `LLM_MODE=live`
 12. **Approve scope** (with a confirm step) → see **Your approved scope** (stage `SCOPE_APPROVED`) — and, without clicking again, watch Grey check whether the project really needs AI.
 13. Review **Does your project need AI?**: Grey's verdict (e.g. "Traditional machine learning is enough" or "A rule-based approach is better") and why, how the project would work without AI, the parts that need no AI and — when AI is used — where AI is used, the AI task, the main approach and a fallback.
 14. Optionally ask Grey to check again, up to 2 times: **Can I do this without AI?** or **Use a ready-made model instead** (only the ones that make sense are shown). Grey follows the preference when it fits, or keeps its answer and says why.
-15. **Approve AI strategy** (with a confirm step) → see **Your approved AI strategy** (stage `AI_STRATEGY_APPROVED`).
+15. **Approve AI strategy** (with a confirm step) → see **Your approved AI strategy** (stage `AI_STRATEGY_APPROVED`) — and, without clicking again, watch Grey search dataset sites.
+16. Review **Pick the data you'll build on**: what the data is for, then **Grey's main pick** and an **Alternative** side by side — each with a link to the dataset page Grey found (or, for data you generate / collect, how to get it), where it's from, how well it fits, why it fits, size, labels, license, main features, the preparation it needs and its limitations. Facts the search didn't show say "Not stated — check the dataset page".
+17. Optionally ask Grey to search again, up to 2 times: **Find other options** (never the same datasets twice) or **I'd rather create or collect my own data** (only the ones that make sense are shown).
+18. **Use this dataset** on either one (with a confirm step) → see **Your selected dataset** (stage `DATASET_SELECTED`).
 
 On any failure: a calm message and **Try again** (or **Research again** when the evidence was too thin). A failed redesign keeps the current design and doesn't use up a redesign.
-The journey stops at the approved AI strategy. Datasets, technology, architecture, evaluation, feasibility and the proposal do not exist yet.
+The journey stops at the selected dataset. Pretrained models / APIs, technology, hardware, architecture, evaluation, feasibility and the proposal do not exist yet.
 
 ---
 
@@ -137,20 +161,21 @@ The journey stops at the approved AI strategy. Datasets, technology, architectur
 
 | Area | What exists | Location |
 |---|---|---|
-| Configuration | `APP_ENV`, `DATABASE_URL`, `CORS_ORIGINS`, `SEARCH_PROVIDERS`, `SERPAPI_API_KEY`, `TAVILY_API_KEY`, `RESEARCH_MAX_SEARCHES`, `SEARCH_TIMEOUT_SECONDS`, `SEARCH_MAX_RETRIES`, `SEARCH_COOLDOWN_SECONDS`, `SEARCH_QUOTA_COOLDOWN_SECONDS`, `MOCK_SEARCH_DELAY_MS`, `LLM_MODE`, `GROQ_API_KEY`, `GROQ_BASE_URL`, `LLM_PROFILE_*` overrides, `LLM_TIMEOUT_SECONDS`, `LLM_TOTAL_DEADLINE_SECONDS`, `LLM_MAX_RETRIES`, `LLM_COOLDOWN_SECONDS`, `LLM_QUOTA_COOLDOWN_SECONDS` | `app/core/config/settings.py`, `.env.example` |
-| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5); `project_definition_run`, `project_definition`, `scope_item` (0.6); `ai_strategy_run`, `ai_strategy` (0.7) | `app/core/brain/models.py` |
-| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval, project definition, scope moves, scope approval, AI checks, re-checks, AI strategy approval); scope rules in `scope_rules.py`, AI strategy rules in `ai_strategy_rules.py`; read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
+| Configuration | `APP_ENV`, `DATABASE_URL`, `CORS_ORIGINS`, `SEARCH_PROVIDERS`, `SERPAPI_API_KEY`, `TAVILY_API_KEY`, `RESEARCH_MAX_SEARCHES`, `DATASET_MAX_SEARCHES`, `SEARCH_TIMEOUT_SECONDS`, `SEARCH_MAX_RETRIES`, `SEARCH_COOLDOWN_SECONDS`, `SEARCH_QUOTA_COOLDOWN_SECONDS`, `MOCK_SEARCH_DELAY_MS`, `LLM_MODE`, `GROQ_API_KEY`, `GROQ_BASE_URL`, `LLM_PROFILE_*` overrides, `LLM_TIMEOUT_SECONDS`, `LLM_TOTAL_DEADLINE_SECONDS`, `LLM_MAX_RETRIES`, `LLM_COOLDOWN_SECONDS`, `LLM_QUOTA_COOLDOWN_SECONDS` | `app/core/config/settings.py`, `.env.example` |
+| Project Brain storage | `workspace_brain`; `research_run`, `evidence_source` (0.2); `problem_run`, `problem_candidate`, `problem_evidence` (0.3); `functional_area`, `fyp_design_run`, `fyp_design` (0.5); `project_definition_run`, `project_definition`, `scope_item` (0.6); `ai_strategy_run`, `ai_strategy` (0.7); `dataset_run`, `dataset_plan` (0.8) | `app/core/brain/models.py` |
+| Project Brain access | `WorkspaceBrainRepository` (decisions, research, evidence, problems, selection, area, FYP design versions, approval, project definition, scope moves, scope approval, AI checks, re-checks, AI strategy approval, dataset searches with their pages, re-searches, dataset selection); scope rules in `scope_rules.py`, AI strategy rules in `ai_strategy_rules.py`, dataset rules in `dataset_rules.py`; read-only `EvidenceReader` / `SessionEvidenceReader` for skills | `app/core/brain/repository.py`, `readers.py` |
 | Database | SQLAlchemy async engine; SQLite locally (`grey.db`); tables created at startup (new tables are added to an existing `grey.db` automatically) | `app/core/brain/database.py` |
 | Event envelope | `GreyEvent` (type, workspace_id, domain, workflow, stage, status, data, brain_patch, allowed_actions) | `app/core/events/schemas.py` |
 | Discovery workflow | `industry_selection` → `branch_selection` → ⏸ → `evidence_research` → ⏸ → `problem_extraction` → `problem_selection` (interrupt) → END | `app/domains/fyp/workflows/discovery/` |
 | FYP Design workflow (0.5) | `area_classification` → `fyp_design` → `fyp_review` (interrupt: approve → END, adjust → `fyp_design`) | `app/domains/fyp/workflows/fyp_design/` |
 | Project Definition workflow (0.6) | `define_project` → `scope_review` (interrupt: move → `scope_review`, approve → END) | `app/domains/fyp/workflows/project_definition/` |
 | AI Strategy workflow (0.7) | `plan_ai_strategy` → `strategy_review` (interrupt: approve → END, recheck → `plan_ai_strategy`) | `app/domains/fyp/workflows/ai_strategy/` |
-| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp`, `define_project`, `plan_ai_strategy` (LLM via gateway), registered at startup | `app/domains/fyp/skills/`, `main.py` |
+| Dataset Discovery workflow (0.8) | `find_datasets` → `dataset_review` (interrupt: select → END, research → `find_datasets`) | `app/domains/fyp/workflows/dataset_discovery/` |
+| Skills | `research_evidence` (search tool, no LLM; six steps incl. second-hop startup confirmation), `problem_extraction`, `classify_area`, `design_fyp`, `define_project`, `plan_ai_strategy` (LLM via gateway), `find_datasets` (search tool + LLM via gateway), registered at startup | `app/domains/fyp/skills/`, `main.py` |
 | Search tool | `SearchGateway` (ordered fallback) over `SerpApiProvider`, `TavilySearchProvider`; `MockSearchProvider` by default | `app/core/tools/` |
 | LLM layer | Gateway, profiles, router, health, errors, schema tools; Fake + OpenAI-compatible (Groq) providers | `app/core/llm/` |
 | Taxonomy | 15 industries, 80 branches, validation helpers | `app/domains/fyp/workflows/discovery/taxonomy.py` |
-| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`, `POST /projects/{id}/ai-strategy` (stream), `POST /projects/{id}/ai-strategy/recheck` (stream), `POST /projects/{id}/ai-strategy/approve`, `GET /projects/{id}/ai-strategy`, `GET /health` | `app/api/`, `main.py` |
+| API | `POST /projects`, `POST /projects/{id}/industry`, `POST /projects/{id}/branch`, `GET /projects/{id}`, `POST /projects/{id}/research` (stream), `GET /projects/{id}/evidence`, `POST /projects/{id}/problems` (stream), `POST /projects/{id}/problem`, `GET /projects/{id}/problems`, `POST /projects/{id}/fyp-design` (stream), `POST /projects/{id}/fyp-design/adjust` (stream), `POST /projects/{id}/fyp-design/approve`, `GET /projects/{id}/fyp-design`, `POST /projects/{id}/project-definition` (stream), `POST /projects/{id}/scope/move`, `POST /projects/{id}/scope/approve`, `GET /projects/{id}/project-definition`, `POST /projects/{id}/ai-strategy` (stream), `POST /projects/{id}/ai-strategy/recheck` (stream), `POST /projects/{id}/ai-strategy/approve`, `GET /projects/{id}/ai-strategy`, `POST /projects/{id}/datasets` (stream), `POST /projects/{id}/datasets/research` (stream), `POST /projects/{id}/datasets/select`, `GET /projects/{id}/datasets`, `GET /health` | `app/api/`, `main.py` |
 | CORS | Browser origins from `CORS_ORIGINS` (default `http://localhost:3000`) | `main.py` |
 
 ### Frontend (`Frontend/`)
@@ -158,22 +183,23 @@ The journey stops at the approved AI strategy. Datasets, technology, architectur
 | Area | What exists | Location |
 |---|---|---|
 | App shell | Next.js 15 App Router, Tailwind, sidebar placeholder, disabled chat input | `app/layout.tsx`, `app/page.tsx` |
-| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`, `defineProject`, `moveScopeItem`, `approveScope`, `checkAINeed`, `recheckAIStrategy`, `approveAIStrategy`), `readEventStream` | `core/grey-agent/` |
+| Grey UI Adapter | `GreyAgentProvider`, `useGreyUIState`, `useGreyAgent`, `useGreyActions` (`startProject`, `selectIndustry`, `selectBranch`, `startResearch`, `extractProblems`, `selectProblem`, `designFYP`, `adjustFYPDirection`, `approveFYPDirection`, `defineProject`, `moveScopeItem`, `approveScope`, `checkAINeed`, `recheckAIStrategy`, `approveAIStrategy`, `findDatasets`, `requestDatasetAlternative`, `selectDataset`), `readEventStream` | `core/grey-agent/` |
 | UI state | `GreyUIState` from each `GreyEvent`: latest `eventData` + `lastEventType`, `progress`, `brainSummary` (camelCase from `brain_patch`) | `core/grey-agent/GreyAgentProvider.tsx` |
 | Discovery cards | `IndustrySelector`, `BranchSelector`, `ResearchProgressCard`, `ProblemProgressCard`, `ProblemOptions`, `ProblemOpportunityCard`, `SelectedProblemCard`, `StepChecklist` | `domains/fyp/components/` |
 | FYP cards (0.5) | `FunctionalAreaCard`, `FYPDirectionCard`, `ApprovedFYPCard` | `domains/fyp/components/` |
 | Definition cards (0.6) | `ProjectDefinitionCard`, `ApprovedScopeCard` | `domains/fyp/components/` |
 | AI strategy cards (0.7) | `AIStrategyCard`, `ApprovedAIStrategyCard` | `domains/fyp/components/` |
-| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`); `projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`, `SCOPE_LISTS`); `aiStrategy.ts` (`readAIStrategy`, verdict / task / approach labels, `RECHECK_OPTIONS`) | `domains/fyp/` |
+| Dataset cards (0.8) | `DatasetRecommendationCard`, `SelectedDatasetCard` | `domains/fyp/components/` |
+| Event parsing | `problems.ts` (`readProblems`, `readProblem`, `isSampleData`, task-type labels); `fypDesign.ts` (`readFYP`, `readArea`, `ADJUSTMENT_OPTIONS`, `isSampleFYP`); `projectDefinition.ts` (`readDefinition`, `itemsOf`, `canMove`, `SCOPE_LISTS`); `aiStrategy.ts` (`readAIStrategy`, verdict / task / approach labels, `RECHECK_OPTIONS`); `datasets.ts` (`readDatasets`, `selectedOption`, `isSampleDatasets`, kind / fit labels, `RESEARCH_OPTIONS`) | `domains/fyp/` |
 
 ### Tests
 
 | Suite | Command | Count |
 |---|---|---|
-| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **844 passing, 11 skipped** (2 live Groq + 9 live search tests) |
-| Backend live LLM | `$env:RUN_LIVE_LLM_TESTS="1"; ...pytest -m live_llm -s` | 2 tests (gateway; `plan_ai_strategy` first check + re-check), need `GROQ_API_KEY`; use a little Groq quota |
+| Backend (pytest) | `Backend\venv\Scripts\python.exe -m pytest -q` | **980 passing, 12 skipped** (2 live Groq + 9 live search + 1 live search-and-Groq tests) |
+| Backend live LLM | `$env:RUN_LIVE_LLM_TESTS="1"; ...pytest -m live_llm -s` | 2 tests (gateway; `plan_ai_strategy` first check + re-check), need `GROQ_API_KEY`; use a little Groq quota. `tests/live/test_datasets_live.py` needs **both** flags (`RUN_LIVE_SEARCH_TESTS=1` and `RUN_LIVE_LLM_TESTS=1`): about 4 search credits + 2–4 Groq calls |
 | Backend live search | `$env:RUN_LIVE_SEARCH_TESTS="1"; ...pytest -m live_search -s` | 9 tests, need `SERPAPI_API_KEY` / `TAVILY_API_KEY`; about 1 credit each |
-| Frontend (Vitest) | `cd Frontend; npm test` | **154 passing** |
+| Frontend (Vitest) | `cd Frontend; npm test` | **182 passing** |
 | Frontend type-check | `npm run type-check` | 0 errors |
 | Frontend build | `npm run build` | succeeds |
 
@@ -187,7 +213,7 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 |---|---|
 | LLM profiles `high_quality_reasoning`, `writing`, `long_context` | Defined and configurable; no skill uses them yet (`structured_reasoning` and, since 0.5, `fast_cheap` are used). |
 | CopilotKit | Packages installed. **Not wired** — the adapter uses `fetch` + an NDJSON reader. |
-| Future enums | `WorkflowState`, `EventType`, `AllowedAction` contain values for later releases (e.g. `DATASET_DISCOVERY`, `dataset_options_ready`, `requestMoreProblems`, `selectDataset`). `EventType.STAGE_CHANGED` is defined but never sent. |
+| Future enums | `WorkflowState`, `EventType`, `AllowedAction` contain values for later releases (e.g. `TECHNOLOGY_PLAN`, `architecture_ready`, `requestMoreProblems`, `approveTechnicalPlan`). `EventType.STAGE_CHANGED` is defined but never sent. |
 | `askGrey` action | Included in some `allowed_actions`, but no handler on either side. |
 | Sidebar, chat input | Visual placeholders; not interactive. |
 | Empty folders | `Frontend/core/{chat,drawers,sidebar,shared-components}`, `Frontend/domains/fyp/{actions,routes}`. |
@@ -196,7 +222,8 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 
 ## 4. Not implemented (by design, for later releases)
 
-- Datasets, specific models / APIs, technology stack, hardware, architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the approved AI strategy
+- Pretrained models / APIs, technology stack, hardware, architecture, evaluation, feasibility, supervisor readiness, proposal — everything after the selected dataset
+- Reading dataset pages or using dataset-site APIs (Kaggle, Hugging Face) for exact sizes and licenses (0.8 uses search snippets only); re-searches other than the two controlled ones; changing the selected dataset
 - Re-checks other than the two controlled ones (no free-text questions, no "use more AI"); keeping earlier AI strategy versions (a re-check replaces the draft; each attempt stays in `ai_strategy_run`)
 - Adding or rewording scope features, or asking Grey to rewrite the definition (0.6 allows moves between lists only)
 - Asking for more / different problems, or going back to change an earlier decision (e.g. a different problem after the FYP design started)
@@ -237,6 +264,8 @@ Every automated test uses `FakeLLMProvider` and `MockSearchProvider` — `tests/
 10. **Second-hop startup matching is strict.** A startup counts as confirmed only if its name appears in the website address, so some real startups may be missed (fewer Tier A sources), but a wrong site is not marked official.
 
 11. **Free search plans are small.** One research run uses about 12 searches (cap 15). When SerpAPI runs out, Grey switches to Tavily; when both run out, research shows "please try again".
+
+12. **Dataset live run findings (2026-10-11, Defense → Navy sample, not yet fixed):** the 4 searches returned 8 real dataset pages (all from Tavily; every one a real Kaggle / Hugging Face dataset page, no portal home pages), but none was about vessels — they were general "anomaly detection" datasets, because the searches use the branch and task words, not domain words like "AIS". Groq correctly refused the weak matches and recommended simulated + collected vessel data instead. In the "how to get it" text for own data, the model named outside data services (e.g. MarineTraffic, AISHub) that Grey did not verify — the checks only verify facts about the pages found. Possible later fixes: domain keywords from the problem in the searches, and a check on own-data texts.
 
 12. **Release 0.5 has not been run with the real model yet.** Everything is tested with the fake LLM (and once end to end through a real server in fake mode). The first live run with Groq may need prompt tweaks. Fake-mode areas and designs are template-based (the "Sample data" badge shows when the evidence is mock data).
 

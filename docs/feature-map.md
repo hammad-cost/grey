@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-10 (Release 0.7)
+**Last updated:** 2026-10-11 (Release 0.8)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -26,6 +26,7 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F11 | From problem to FYP (area, design, redesigns, approval) | ✅ (fake LLM by default; not yet run live) | 0.5 |
 | F12 | Project definition and scope (definition, scope moves, approval) | ✅ (fake LLM by default; not yet run live) | 0.6 |
 | F13 | AI necessity check and AI strategy (check, re-checks, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.7 |
+| F14 | Dataset discovery (search, primary + alternative, re-searches, selection) | ✅ (mock search + fake LLM by default; skill live-tested with real search + Groq) | 0.8 |
 
 ---
 
@@ -269,3 +270,21 @@ After the student approves the scope, Grey checks whether the project really nee
 | Events | `ai_strategy_started` → `ai_strategy_progress` ×3 (checking the AI need / checking again, checking the answer, saving) → `ai_strategy_ready` (stage `AI_STRATEGY`, `awaiting_user`, allowed `approveAIStrategy` + `recheckAIStrategy` while a re-check is possible, `data.ai_strategy`). Every event has `data.recheck`. Failure: first check → `ai_strategy_failed` (`blocked`, allowed `checkAINeed`); re-check → `ai_strategy_failed` (`awaiting_user`, strategy kept, review actions). Approval: `ai_strategy_approved` (stage `AI_STRATEGY_APPROVED`, `complete`, no actions). |
 | Tests | Backend: `test_brain_ai_strategy.py` (27), `test_plan_ai_strategy_skill.py` (41), `test_ai_strategy_workflow.py` (20), `tests/integration/test_ai_strategy_api.py` (12), live `tests/live/test_ai_strategy_live.py` (1, skipped by default). Frontend: adapter tests (5 new), `aiStrategy.test.ts`, `AIStrategyCard.test.tsx`, `ApprovedAIStrategyCard.test.tsx` |
 
+---
+
+## F14 — Dataset discovery (Release 0.8)
+
+After the student approves the AI strategy, Grey searches dataset sites and recommends one primary dataset and one alternative with the details blueprint §25 asks for (§24–25). The student may ask Grey to search again (up to 2 times) with a controlled preference, then selects one of the two.
+
+| Layer | Detail |
+|---|---|
+| UI | `DatasetRecommendationCard` (live checklist; failure → Try again; review: purpose, pages/searches line, primary and alternative panels — linked name, kind · source · fit, why it fits, how to get it (own data), size, labels, license, main features, preparation, limitations — **Use this dataset** on each with confirm dialog; **Find other options** / **I'd rather create or collect my own data** — only those in `available_researches` — with "N of 2 new searches left"; notice after a failed re-search; **Sample data** badge for `.example` pages), `SelectedDatasetCard` — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.datasets` (dataset_options_ready, dataset_search_failed after a re-search, dataset_selected), `brainSummary` (`datasetStatus`, `datasetPlanId`, `datasetResearchesLeft`, `datasetSelected`); parsed by `Frontend/domains/fyp/datasets.ts` (`readDatasets`, `selectedOption`, `isSampleDatasets`, `labelOf`, `KIND_LABELS`, `FIT_LABELS`, `RESEARCH_OPTIONS`) |
+| Adapter actions | `approveAIStrategy(id)` continues into `/datasets` automatically when the backend allows `findDatasets`; `findDatasets()` (retry); `requestDatasetAlternative(preference)`; `selectDataset(planId, choice)` — `Frontend/core/grey-agent/hooks.ts` |
+| API | `POST /projects/{id}/datasets` → **200** NDJSON stream; **404** unknown; **409** AI strategy not approved / already searched / already running. `POST /projects/{id}/datasets/research {preference}` → **200** NDJSON stream; **409** nothing to review / no re-searches left / preference makes no sense / running; **422** not `other_options` / `own_data`. `POST /projects/{id}/datasets/select {plan_id, choice}` → **200** `dataset_selected`; **409** wrong id / nothing to select / re-search running; **422** not `primary` / `alternative`. `GET /projects/{id}/datasets` → `DatasetsResponse` (view, latest run) — `Backend/app/api/datasets.py` |
+| Runner | `start_dataset_search()`, `start_dataset_research()` + `DatasetSession.events()`, `select_dataset_option()` — `Backend/app/domains/fyp/workflows/dataset_discovery/runner.py`. Saves with the workflow's plan id and the pages found, records searches used on failures too, fails runs left "running", checks re-search rules before resuming, rebuilds the review pause (including the pages found) from the Brain. |
+| Workflow | Separate graph `dataset_discovery`: `find_datasets` → `dataset_review` (`interrupt`: select → END, research → `find_datasets`) — `nodes.py`, `graph.py`, `state.py`; `view.py` computes `uses_ai`, `ai_task`, `searches_used`, `pages_found`, `researches_left`, `available_researches` |
+| Skill | `find_datasets` (search tool + `structured_reasoning`, max 4,000 output tokens) — `Backend/app/domains/fyp/skills/find_datasets/`. `search.py` builds and runs the searches and keeps only dataset pages (max 8); the model chooses by page number; `validation.py` rejects: unknown choice / page, empty, wrong count (features 1–8, preparation 1–6, limitations 1–5), unsupported size number or license, link, too long (texts 500, items 160), and the dataset rules; one retry. Prompt `find_datasets.v1`. Fake answers in `fake.py`. Every search failing → `DatasetsUnavailableError` (the model isn't asked). |
+| Project Brain | `dataset_run` (preference, status, searches_used, candidates JSON, provider/model/prompt version, error), `dataset_plan` (plan JSON, status draft/selected, researches_used, preference, selected, updated_at, selected_at). Stages `AI_STRATEGY_APPROVED` → `DATASET_DISCOVERY` → `DATASET_SELECTED`, each in the same commit as its data. Rules in `app/core/brain/dataset_rules.py`. |
+| Events | `dataset_search_started` → `dataset_search_progress` ×4 (searching dataset sites / looking at the datasets found before, choosing two, checking they fit, saving) → `dataset_options_ready` (stage `DATASET_DISCOVERY`, `awaiting_user`, allowed `selectDataset` + `requestDatasetAlternative` while a re-search is possible, `data.datasets`). Every event has `data.research`. Failure: first search → `dataset_search_failed` (`blocked`, allowed `findDatasets`); re-search → `dataset_search_failed` (`awaiting_user`, datasets kept, review actions). Selection: `dataset_selected` (stage `DATASET_SELECTED`, `complete`, no actions). |
+| Tests | Backend: `test_brain_datasets.py` (30), `test_dataset_search.py` (39), `test_find_datasets_skill.py` (34), `test_dataset_workflow.py` (21), `tests/integration/test_datasets_api.py` (12), live `tests/live/test_datasets_live.py` (1, skipped by default). Frontend: adapter tests (5 new), `datasets.test.ts`, `DatasetRecommendationCard.test.tsx`, `SelectedDatasetCard.test.tsx` |

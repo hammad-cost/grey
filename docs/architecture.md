@@ -195,6 +195,27 @@ approveScope → scope_approved (allows checkAINeed) → adapter POSTs /ai-strat
   which re-checks are offered = view.py, using the same rules as the repository
 ```
 
+### Dataset path (Release 0.8)
+
+```
+approveAIStrategy → ai_strategy_approved (allows findDatasets) → adapter POSTs /datasets
+  runner: check stage AI_STRATEGY_APPROVED, claim project, fail leftover run
+  dataset_discovery graph
+    find_datasets → FindDatasetsSkill
+                    search.py: 4 targeted searches → SearchGateway → keep dataset pages only (max 8)
+                    model (structured_reasoning) picks primary + alternative BY PAGE NUMBER
+                    validation.py + dataset_rules (found links only, facts from the snippet, …)
+                  → runner saves the plan + the pages found (stage DATASET_DISCOVERY) → dataset_options_ready
+    dataset_review ⏸ interrupt
+      research (≤2) → POST /datasets/research {preference} → research rules → Command(resume=research)
+                      other_options: 3 new searches, pages shown before skipped
+                      own_data:      no searches, pages found before reused, own data becomes primary
+                    → repository replaces the draft, researches_used + 1 → dataset_options_ready
+      select        → POST /datasets/select {plan_id, choice} → Command(resume=select) → END
+                    → stage DATASET_SELECTED → dataset_selected
+  which re-searches are offered = view.py, using the same rules as the repository
+```
+
 ## 3. Two kinds of state
 
 | | Project Brain | LangGraph state |

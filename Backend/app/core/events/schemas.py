@@ -80,6 +80,13 @@ class EventType(str, Enum):
     MODEL_SEARCH_FAILED = "model_search_failed"
     MODELS_APPROVED = "models_approved"
 
+    # Release 0.10 — technology stack and hardware. Safe activity only, never reasoning.
+    TECHNOLOGY_PLAN_STARTED = "technology_plan_started"
+    TECHNOLOGY_PLAN_PROGRESS = "technology_plan_progress"
+    TECHNOLOGY_PLAN_READY = "technology_plan_ready"
+    TECHNOLOGY_PLAN_FAILED = "technology_plan_failed"
+    TECHNOLOGY_APPROVED = "technology_approved"
+
     # Future — defined here so event names are never magic strings
     HUMAN_INPUT_REQUIRED = "human_input_required"
     ARCHITECTURE_READY = "architecture_ready"
@@ -131,6 +138,9 @@ class AllowedAction(str, Enum):
     FIND_MODELS = "findModels"                     # look for pretrained models and APIs (or retry)
     REQUEST_OTHER_MODELS = "requestOtherModels"    # look for other models (up to 2 times)
     APPROVE_MODELS = "approveModels"
+    PLAN_TECHNOLOGY = "planTechnology"             # plan the stack and hardware (or retry)
+    REPLAN_TECHNOLOGY = "replanTechnology"         # make it simpler / cheaper (up to 2 times)
+    APPROVE_TECHNOLOGY = "approveTechnology"
     APPROVE_TECHNICAL_PLAN = "approveTechnicalPlan"
     GO_BACK = "goBack"
     ASK_GREY = "askGrey"

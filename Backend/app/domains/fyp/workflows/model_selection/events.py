@@ -149,7 +149,7 @@ class ModelEventBuilder:
 
 
 def models_approved_event(workspace_id: str, view: ModelView) -> GreyEvent:
-    """The student approved the model plan. Release 0.9 ends here."""
+    """The student approved the model plan. Next, Grey plans the technology (Release 0.10)."""
     return build_event(
         type=EventType.MODELS_APPROVED,
         workspace_id=workspace_id,
@@ -158,5 +158,5 @@ def models_approved_event(workspace_id: str, view: ModelView) -> GreyEvent:
         status=EventStatus.COMPLETE,
         data={"models": view.model_dump(mode="json")},
         brain_patch={"workflow_state": WorkflowState.MODELS_APPROVED.value, **_view_patch(view)},
-        allowed_actions=[],
+        allowed_actions=[AllowedAction.PLAN_TECHNOLOGY],
     )

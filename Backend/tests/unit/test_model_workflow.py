@@ -236,7 +236,7 @@ async def test_approving_ends_release_0_9(repo, setup, graph):  # noqa: F811
     event = await approve_model_plan(WS, plan_id, repo, graph)
 
     assert event.type == EventType.MODELS_APPROVED and event.stage == WorkflowState.MODELS_APPROVED.value
-    assert event.status == EventStatus.COMPLETE and event.allowed_actions == []
+    assert event.status == EventStatus.COMPLETE and event.allowed_actions == [AllowedAction.PLAN_TECHNOLOGY]
     snapshot = await repo.get_snapshot(WS)
     assert snapshot.workflow_state == WorkflowState.MODELS_APPROVED
     assert snapshot.model_plan.status == ModelPlanStatus.APPROVED

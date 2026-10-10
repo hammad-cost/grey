@@ -27,7 +27,9 @@
  *   ARCHITECTURE       → ArchitectureCard (review: make it simpler, approve the technical plan)
  *   TECHNICAL_PLAN_APPROVED → ApprovedTechnicalPlanCard + FeasibilityCard (Grey checking feasibility)
  *   FEASIBILITY        → FeasibilityCard (review: accept)
- *   FEASIBILITY_ACCEPTED → AcceptedFeasibilityCard (Release 0.12 ends here)
+ *   FEASIBILITY_ACCEPTED → AcceptedFeasibilityCard + SupervisorReadinessCard (Grey preparing the brief)
+ *   SUPERVISOR_READINESS → SupervisorReadinessCard (review: checks, summary, likely questions; confirm)
+ *   SUPERVISOR_READY   → SupervisorReadyCard (Release 0.13 ends here)
  */
 
 import { useGreyActions, useGreyAgent, useGreyUIState } from "@/core/grey-agent";
@@ -53,6 +55,8 @@ import { ProjectDefinitionCard } from "@/domains/fyp/components/ProjectDefinitio
 import { ResearchProgressCard } from "@/domains/fyp/components/ResearchProgressCard";
 import { SelectedDatasetCard } from "@/domains/fyp/components/SelectedDatasetCard";
 import { SelectedProblemCard } from "@/domains/fyp/components/SelectedProblemCard";
+import { SupervisorReadinessCard } from "@/domains/fyp/components/SupervisorReadinessCard";
+import { SupervisorReadyCard } from "@/domains/fyp/components/SupervisorReadyCard";
 import { TechnologyPlanCard } from "@/domains/fyp/components/TechnologyPlanCard";
 
 // Stages whose cards show their own progress, so the generic spinner is hidden.
@@ -61,6 +65,7 @@ const STAGES_WITH_OWN_PROGRESS = [
   "APPROVED_FYP", "SCOPE", "SCOPE_APPROVED", "AI_STRATEGY", "AI_STRATEGY_APPROVED", "DATASET_DISCOVERY",
   "DATASET_SELECTED", "MODEL_SELECTION", "MODELS_APPROVED", "TECHNOLOGY_PLAN",
   "TECHNOLOGY_APPROVED", "ARCHITECTURE", "TECHNICAL_PLAN_APPROVED", "FEASIBILITY",
+  "FEASIBILITY_ACCEPTED", "SUPERVISOR_READINESS",
 ];
 
 export default function Home() {
@@ -177,6 +182,12 @@ export default function Home() {
         <div className="flex flex-col gap-4 mt-4">
           <FeasibilityCard />
           <AcceptedFeasibilityCard />
+        </div>
+
+        {/* ── Supervisor readiness (Release 0.13) ─────────────────────────── */}
+        <div className="flex flex-col gap-4 mt-4">
+          <SupervisorReadinessCard />
+          <SupervisorReadyCard />
         </div>
 
       </div>

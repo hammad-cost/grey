@@ -23,6 +23,10 @@ from app.domains.fyp.skills.prepare_supervisor_brief.readiness import DATASET_KI
 
 S = ProposalSectionId
 
+AREA_NAMES = {"frontend": "Frontend", "backend": "Backend", "database": "Database", "ai_ml": "AI / ML",
+              "training": "Training", "deployment": "Deployment"}
+COST_WORDS = {"none": "free", "low": "low cost", "medium": "medium cost", "high": "high cost"}
+
 
 def _words(value: str) -> str:
     return value.replace("_", " ")
@@ -93,7 +97,7 @@ def _ai_approach(d: SupervisorBriefInput) -> ProposalSection:
 
 
 def _technology(d: SupervisorBriefInput) -> ProposalSection:
-    items = [f"{_words(c.area.value).replace('ai ml', 'AI / ML').capitalize()}: {c.choice} — {c.reason}" for c in d.technology.stack]
+    items = [f"{AREA_NAMES.get(c.area.value, c.area.value)}: {c.choice} — {c.reason}" for c in d.technology.stack]
     return _section(S.TECHNOLOGY_STACK, ["Approved technology plan"], [d.technology.summary], items)
 
 
@@ -107,7 +111,7 @@ def _architecture(d: SupervisorBriefInput) -> ProposalSection:
 
 def _hardware(d: SupervisorBriefInput) -> ProposalSection:
     items = [
-        f"{h.name} — {h.purpose} ({'essential' if h.essential else 'nice to have'}, {h.cost.value} cost)"
+        f"{h.name} — {h.purpose} ({'essential' if h.essential else 'nice to have'}, {COST_WORDS[h.cost.value]})"
         + (f"; alternative: {h.alternative}" if h.alternative else "")
         for h in d.technology.hardware
     ]

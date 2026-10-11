@@ -67,6 +67,8 @@ def test_code_sections_come_straight_from_approved_decisions():
     assert built[S.DATASET].paragraphs[0].startswith("Vessel tracks dataset 1 — public dataset")
     assert any(i.startswith("Link: https://") for i in built[S.DATASET].items)
     assert built[S.TIMELINE].items[0].startswith("Month 1")
+    assert "AI / ML: Python with scikit-learn — Classic models are enough for this task." in built[S.TECHNOLOGY_STACK].items
+    assert built[S.HARDWARE_REQUIREMENTS].items[0].endswith("(essential, free)")
     assert built[S.RISKS].paragraphs[0].startswith("Overall feasibility: High")
 
 

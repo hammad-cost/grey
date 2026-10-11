@@ -1,6 +1,6 @@
 # Grey — Feature Map
 
-**Last updated:** 2026-10-11 (Release 0.13)
+**Last updated:** 2026-10-11 (Release 0.14 — the full MVP journey)
 
 For each feature, this map shows where it lives in every layer, from the button the student clicks to the database row, plus the tests that cover it.
 Use it to find the right files before changing a feature.
@@ -32,6 +32,7 @@ Status key: ✅ implemented and tested · 🟡 partial · ⬜ not started
 | F17 | Architecture and evaluation plan (pipeline, data flows, metrics, system tests, redesigns, approval) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.11 |
 | F18 | Feasibility analysis (13 dimensions, computed overall, risks, acceptance) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.12 |
 | F19 | Supervisor readiness (checks, summary, likely questions, confirmation) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.13 |
+| F20 | Proposal generation (23 traceable sections, references, rewrites, Markdown, finalize → COMPLETE) | ✅ (fake LLM by default; skill live-tested with Groq) | 0.14 |
 
 ---
 
@@ -379,3 +380,20 @@ After feasibility is accepted, Grey checks the student is ready for the supervis
 | Skill | `prepare_supervisor_brief` — `readiness.py` (checks + summary in code), `validation.py`, `skill.py`, `fake.py`; prompt `prepare_supervisor_brief.v1` |
 | Project Brain | `readiness_run`, `supervisor_brief`; stages `FEASIBILITY_ACCEPTED` → `SUPERVISOR_READINESS` → `SUPERVISOR_READY`; rules in `app/core/brain/supervisor_rules.py` |
 | Tests | Backend: `test_brain_supervisor.py` (7), `test_prepare_supervisor_brief_skill.py` (14), `test_supervisor_readiness_workflow.py` (5), `test_supervisor_api.py` (3), live `test_supervisor_brief_live.py`. Frontend: adapter (2 new), `SupervisorReadinessCard.test.tsx` (7) |
+
+---
+
+## F20 — Proposal generation (Release 0.14)
+
+After the student confirms they're ready, Grey writes the proposal from the Project Brain (blueprint §36–37): fact sections and references in code, narrative sections in three small model calls, every section traceable.
+
+| Layer | Detail |
+|---|---|
+| UI | `ProposalWorkspace` (checklist; Try again; contents; sections with "Built from" / "Written by Grey from" sources; numbered objectives; linked references; **Rewrite this section** with N of 3 left; **Download as Markdown**; **Finalize proposal** with confirm), `CompletedProposalCard` — `Frontend/domains/fyp/components/` |
+| Data source | `eventData.proposal`; `brainSummary` (`proposalStatus`, `proposalId`, `proposalRewritesLeft`); `Frontend/domains/fyp/proposal.ts` |
+| Adapter actions | `confirmSupervisorReady(id)` continues into `/proposal` when the backend allows `generateProposal`; `generateProposal()`, `rewriteProposalSection(section)`, `finalizeProposal(proposalId)`; `proposalDownloadUrl(workspaceId)` |
+| API | `POST /projects/{id}/proposal` (stream; 409 not ready / already written / running), `POST /projects/{id}/proposal/rewrite {section}` (stream; 409 fact section / none left; 422 unknown section), `POST /projects/{id}/proposal/finalize {proposal_id}` (→ `COMPLETE`), `GET /projects/{id}/proposal`, `GET /projects/{id}/proposal/markdown` — `Backend/app/api/proposal.py` |
+| Runner / workflow | `start_proposal()`, `start_proposal_rewrite()`, `ProposalSession.events()`, `finalize_proposal()`; graph `proposal` — `Backend/app/domains/fyp/workflows/proposal/` |
+| Skill | `generate_proposal` — `builders.py` (12 code sections + references), `validation.py`, `skill.py` (3 calls, `writing` profile), `markdown.py`, `fake.py`; prompt `generate_proposal.v1` |
+| Project Brain | `proposal_run`, `proposal`; stages `SUPERVISOR_READY` → `PROPOSAL_GENERATION` → `COMPLETE`; rules in `app/core/brain/proposal_rules.py` |
+| Tests | Backend: `test_brain_proposal.py` (8), `test_generate_proposal_skill.py` (21), `test_proposal_workflow.py` (6), `test_proposal_api.py` (3), live `test_proposal_live.py`. Frontend: adapter (2 new), `ProposalWorkspace.test.tsx` (7) |

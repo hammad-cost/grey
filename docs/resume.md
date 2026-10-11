@@ -4,11 +4,11 @@
 
 | | |
 |---|---|
-| Current release | **0.14 — Proposal generation: building** (autonomous run 0.9 → 0.14, authorized 2026-10-11). 0.13 is complete (local, not pushed). |
-| Current step | 0.14 Step 1 (plan + Brain storage). |
-| Last completed step | 0.13 Step 8 — docs + verification: 1245 backend + 17 skipped, 237 frontend, type-check + build OK; fake e2e through a real server OK; live prepare_supervisor_brief run (Groq) OK. |
-| Next action | Continue the roadmap below, release by release. After each release: full tests, fake e2e, docs + memory, then the next release. Commit locally; **do not push** (the student says "push"). |
-| Last commit | `git log --oneline -10`. `origin/main` = 0.8 docs push; everything after it is local. |
+| Current release | **All releases 0.1 → 0.14 are COMPLETE — the full Grey MVP journey is built** ("Start my FYP" → … → finalized proposal, stage `COMPLETE`). 0.9–0.14 were built in the autonomous run (2026-10-11) and are **local, not pushed**. |
+| Current step | Waiting for the student's review (browser walk-through of 0.3–0.14). |
+| Last completed step | 0.14 Step 7 — docs + verification: 1283 backend + 18 skipped, 246 frontend, type-check + build OK; fake-mode end-to-end run of the WHOLE journey through a real server to `COMPLETE`; live `generate_proposal` run (Groq) OK. |
+| Next action | Student reviews. Options: (a) browser walk-through, (b) "push", (c) a full live journey with real search + Groq, (d) quality work — known issues 12 (dataset search wording) and 13 (retiring services), the paused 0.4.1 evidence quality, (e) post-MVP: `goBack` with impact preview, `askGrey` chat / CopilotKit, PDF / Word export. Only when asked. |
+| Last commit | `git log --oneline -10`. `origin/main` = the 0.8 docs push; all of 0.9–0.14 is local. **Ask before pushing.** |
 
 ## Roadmap for the autonomous run (0.9 → 0.14)
 
@@ -20,8 +20,8 @@ Rules: same pattern as 0.7/0.8 (Brain → skill → workflow → API → adapter
 | 0.10 | §27–29 Technology stack + hardware | `TECHNOLOGY_PLAN` → `TECHNOLOGY_APPROVED` | `plan_technology` (LLM) | ✅ done |
 | 0.11 | §30–31 Architecture + evaluation plan | `ARCHITECTURE` → `TECHNICAL_PLAN_APPROVED` (action `approveTechnicalPlan`) | `design_architecture` (LLM) | ✅ done |
 | 0.12 | §32 Feasibility | `FEASIBILITY` → `FEASIBILITY_ACCEPTED` | `assess_feasibility` (LLM rates dimensions; overall High/Medium/Low computed in code) | ✅ done |
-| 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_questions` (LLM talking points) | ✅ done |
-| 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | building |
+| 0.13 | §33–35 Readiness check, supervisor summary, likely questions | `SUPERVISOR_READINESS` → `SUPERVISOR_READY` | readiness checks + summary in plain code; `prepare_supervisor_brief` (LLM talking points) | ✅ done |
+| 0.14 | §36–37 Proposal + traceability | `PROPOSAL_GENERATION` → `COMPLETE` | `generate_proposal` (section groups, several small LLM calls; code-built sections from the Brain; references from evidence) | ✅ done |
 
 ## Release 0.14 plan — Proposal generation (autonomous run, 2026-10-11)
 
@@ -29,13 +29,13 @@ Scope: blueprint Step 25 (§36 Proposal Generation, §37 Proposal Traceability).
 
 | Step | What | Commit |
 |---|---|---|
-| 1 | Brain: `proposal_run`, `proposal` (the 23 blueprint sections in order, each with paragraphs / items, its sources and who wrote it; numbered references); `proposal_rules.py` (every section once in order; citations only to existing references); repository + snapshot | |
-| 2 | Skill `generate_proposal`: **11 sections built in plain code from the Brain** (title, scope, functional requirements, dataset, AI / ML approach, technology stack, architecture, hardware, evaluation, risks, timeline) and **references from the verified evidence sources**; **11 narrative sections written by the model in 3 small calls** (`writing` profile) — introduction / background / problem statement / motivation / real-world evidence; proposed solution / aim / objectives / methodology; expected outcomes / limitations; checks (citations, numbers, links, length); a single section can be rewritten; prompt; fake answers; Markdown export in code | |
-| 3 | `proposal` workflow (generate → review interrupt: rewrite a section ↺ / finalize → END), runner, events, view; `supervisor_ready_confirmed` allows `generateProposal` | |
-| 4 | API: `POST /proposal` (stream), `POST /proposal/rewrite` (stream, `{section}`), `POST /proposal/finalize`, `GET /proposal`, `GET /proposal/markdown` | |
-| 5 | Frontend adapter: `generateProposal`, `rewriteProposalSection`, `finalizeProposal`; auto-start after `confirmSupervisorReady` | |
-| 6 | `ProposalWorkspace` (table of contents, every section with its sources, references, rewrite buttons, Download as Markdown), `CompletedProposalCard`; `proposal.ts` | |
-| 7 | Docs + full verification + fake e2e of the whole journey + live Groq run | |
+| 1 | Brain: `proposal_run`, `proposal` (the 23 blueprint sections in order, each with paragraphs / items, its sources and who wrote it; numbered references); `proposal_rules.py` (every section once in order; citations only to existing references); repository + snapshot | ✅ `88e923f` |
+| 2 | Skill `generate_proposal`: **11 sections built in plain code from the Brain** (title, scope, functional requirements, dataset, AI / ML approach, technology stack, architecture, hardware, evaluation, risks, timeline) and **references from the verified evidence sources**; **11 narrative sections written by the model in 3 small calls** (`writing` profile) — introduction / background / problem statement / motivation / real-world evidence; proposed solution / aim / objectives / methodology; expected outcomes / limitations; checks (citations, numbers, links, length); a single section can be rewritten; prompt; fake answers; Markdown export in code | ✅ `6ee63dd` |
+| 3 | `proposal` workflow (generate → review interrupt: rewrite a section ↺ / finalize → END), runner, events, view; `supervisor_ready_confirmed` allows `generateProposal` | ✅ `c23d2db` |
+| 4 | API: `POST /proposal` (stream), `POST /proposal/rewrite` (stream, `{section}`), `POST /proposal/finalize`, `GET /proposal`, `GET /proposal/markdown` | ✅ `188f972` |
+| 5 | Frontend adapter: `generateProposal`, `rewriteProposalSection`, `finalizeProposal`; auto-start after `confirmSupervisorReady` | ✅ `a237a2a` |
+| 6 | `ProposalWorkspace` (table of contents, every section with its sources, references, rewrite buttons, Download as Markdown), `CompletedProposalCard`; `proposal.ts` | ✅ `daec76a` |
+| 7 | Docs + full verification + fake e2e of the whole journey + live Groq run | ✅ `docs commit` |
 
 Decisions: traceability (§37) — every section lists where it came from; facts sections are never written by the model; the model may cite only `[n]` numbers of real evidence sources; at most 3 section rewrites (model-written sections only); finalize with confirm → `COMPLETE`; export as Markdown (PDF / Word later).
 

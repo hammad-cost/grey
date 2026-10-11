@@ -270,6 +270,19 @@ acceptFeasibility → feasibility_accepted (allows prepareSupervisorBrief) → a
     readiness_review ⏸  confirm → SUPERVISOR_READY → supervisor_ready_confirmed
 ```
 
+### Proposal path (Release 0.14)
+
+```
+confirmSupervisorReady → supervisor_ready_confirmed (allows generateProposal) → adapter POSTs /proposal
+  proposal graph
+    generate_proposal → builders.py (12 sections + references from the Brain, plain code)
+                      + 3 small model calls ("writing" profile) for the 11 narrative sections
+                      → validation (citations, percentages, links) + proposal_rules
+                      → runner saves the proposal (PROPOSAL_GENERATION) → proposal_ready
+    proposal_review ⏸  rewrite one narrative section (≤3) ↺  |  finalize → COMPLETE → proposal_finalized
+  GET /proposal/markdown → markdown.py (plain code)
+```
+
 ## 3. Two kinds of state
 
 | | Project Brain | LangGraph state |

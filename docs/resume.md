@@ -4,11 +4,11 @@
 
 | | |
 |---|---|
-| Current release | **All releases 0.1 → 0.14 are COMPLETE — the full Grey MVP journey is built** ("Start my FYP" → … → finalized proposal, stage `COMPLETE`). 0.9–0.14 were built in the autonomous run (2026-10-11) and are **local, not pushed**. |
+| Current release | **All releases 0.1 → 0.14 are COMPLETE — the full Grey MVP journey is built** ("Start my FYP" → … → finalized proposal, stage `COMPLETE`). 0.9–0.14 were built in the autonomous run (2026-10-11) and were **pushed to GitHub on 2026-10-11** (`origin/main` = `9a7f480`). |
 | Current step | Waiting for the student's review (browser walk-through of 0.3–0.14). |
 | Last completed step | 0.14 Step 7 — docs + verification: 1283 backend + 18 skipped, 246 frontend, type-check + build OK; fake-mode end-to-end run of the WHOLE journey through a real server to `COMPLETE`; live `generate_proposal` run (Groq) OK. |
 | Next action | Student reviews. Options: (a) browser walk-through, (b) "push", (c) a full live journey with real search + Groq, (d) quality work — known issues 12 (dataset search wording) and 13 (retiring services), the paused 0.4.1 evidence quality, (e) post-MVP: `goBack` with impact preview, `askGrey` chat / CopilotKit, PDF / Word export. Only when asked. |
-| Last commit | `git log --oneline -10`. `origin/main` = the 0.8 docs push; all of 0.9–0.14 is local. **Ask before pushing.** |
+| Last commit | `git log --oneline -10`. Everything through 0.14 is pushed (`origin/main` = `9a7f480` + this docs fix). **Ask before pushing** new work. |
 
 ## Roadmap for the autonomous run (0.9 → 0.14)
 
